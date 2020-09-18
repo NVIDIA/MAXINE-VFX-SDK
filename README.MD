@@ -14,7 +14,7 @@ NVIDIA VideoEffects SDK provides two sample applications that demonstrate the fe
  
 All features in the VideoEffects SDK support 720p and 1080p as input resolutions. These are the scaling factors supported by the Super Resolution feature:
 - **720p inputs** can be scaled by a factor of 1.5x or 2x.
-- **1080p inputs** can be scaled by a factor of 1.33x or 2x. 
+- **1080p inputs** can be scaled by a factor of 1.33x or 2x.
 Additionally, the Upscale feature supports any input resolution, and the following scaling factors:
 - 1.33x, 1.5x, 2x or 3x  
 
