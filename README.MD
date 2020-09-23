@@ -21,7 +21,7 @@ Additionally, the Upscale feature supports any input resolution, and the followi
 
 NVIDIA VideoEffects SDK is distributed in the following parts:
 
-- This open source repository that includes the [SDK API and proxy linking source code](https://github.com/NVIDIA/BROADCAST-VFX-SDK/tree/master), and [sample applications and their dependency libraries](https://github.com/NVIDIA/BROADCAST-VFX-SDK/tree/master/samples).
+- This open source repository that includes the [SDK API and proxy linking source code](https://github.com/NVIDIA/BROADCAST-VFX-SDK/tree/master/nvvfx), and [sample applications and their dependency libraries](https://github.com/NVIDIA/BROADCAST-VFX-SDK/tree/master/samples).
 - An installer hosted on [RTX broadcast engine developer page](https://developer.nvidia.com/rtx-broadcast-engine) that installs the SDK DLLs, the models, and the SDK dependency libraries.
 
 Please refer to [SDK programming guide](https://github.com/NVIDIA/BROADCAST-VFX-SDK/blob/master/docs/NVIDIA%20Video%20Effects%20SDK%20Programming%20Guide.pdf) for configuring and integrating the SDK, compiling and running the sample applications.
