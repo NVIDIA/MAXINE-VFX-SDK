@@ -1,5 +1,5 @@
 # README
-## Nvidia VideoEffects SDK: API Source Code and Sample Applications
+## NVIDIA VideoEffects SDK: API Source Code and Sample Applications
 
 NVIDIA VideoEffects SDK is an SDK for enhancing and applying filters to videos at real-time. The SDK is powered by NVIDIA graphics processing units (GPUs) with Tensor Cores, and as a result, the algorithm throughput is greatly accelerated, and latency is reduced.
 
