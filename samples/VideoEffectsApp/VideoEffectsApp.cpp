@@ -488,7 +488,7 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
   BAIL_IF_ERR(vfxErr = NvVFX_SetCudaStream(_eff, NVVFX_CUDA_STREAM, stream));
   if (!strcmp(_effectName, NVVFX_FX_ARTIFACT_REDUCTION)) {
     BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned int)FLAG_strength));
-  } else if (!strcasecmp(_effectName, NVVFX_FX_SUPER_RES)) {
+  } else if (!strcmp(_effectName, NVVFX_FX_SUPER_RES)) {
     BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned int)FLAG_strength));
   }
 
@@ -548,7 +548,7 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
   BAIL_IF_ERR(vfxErr = NvVFX_SetCudaStream(_eff, NVVFX_CUDA_STREAM, stream));
   if (!strcmp(_effectName, NVVFX_FX_ARTIFACT_REDUCTION)) {
     BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned int)FLAG_strength));
-  } else if (!strcasecmp(_effectName, NVVFX_FX_SUPER_RES)) {
+  } else if (!strcmp(_effectName, NVVFX_FX_SUPER_RES)) {
     BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned int)FLAG_strength));
   }
   BAIL_IF_ERR(vfxErr = NvVFX_Load(_eff));
