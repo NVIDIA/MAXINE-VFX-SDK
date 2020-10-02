@@ -59,7 +59,7 @@ bool        FLAG_debug               = false,
             FLAG_progress            = false;
 int         FLAG_resolution          = 0,
             FLAG_arStrength          = 0;
-float       FLAG_upscaleStrength     = 0.f;
+float       FLAG_upscaleStrength     = 0.2f;
 std::string FLAG_codec               = "H264",
             FLAG_inFile,
             FLAG_outFile,
