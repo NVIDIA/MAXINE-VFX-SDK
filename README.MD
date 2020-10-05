@@ -12,6 +12,10 @@ NVIDIA VideoEffects SDK has the following AI features:
 <p align="center">
 <img src="https://github.com/NVIDIA/BROADCAST-VFX-SDK/blob/master/resources/superres.gif" alt="NVIDIA Super Resolution" width="640" height="320"/>
  </p>
+<p align="center">
+<img src="https://github.com/NVIDIA/BROADCAST-VFX-SDK/blob/master/resources/artifact_reduction_01.gif" alt="NVIDIA Artifact Resolution" width="320" height="500"/>
+<img src="https://github.com/NVIDIA/BROADCAST-VFX-SDK/blob/master/resources/artifact_reduction_02.gif" alt="NVIDIA Artifact Resolution" width="320" height="500"/>
+ </p>
 
 NVIDIA VideoEffects SDK provides two sample applications that demonstrate the features listed above in real time by using offline videos.
 - **VideoEffects App**, which is a sample app that can invoke each feature individually.
