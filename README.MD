@@ -9,6 +9,10 @@ NVIDIA VideoEffects SDK has the following AI features:
 - **Super Resolution**, which upscales a video while also reducing the blocky and noisy artifacts. It can enhance the details and sharpen the output while simultaneously preserving the content. This is suitable for upscaling lossy content.
 - **Upscale**, which is a very fast and light-weight method for upscaling an input video. It also provides a sharpening parameter to sharpen the resulting output. This feature can be optionally pipelined with the encoder artifact reduction feature to enhance the scale while reducing the video artifacts.
 
+<p align="center">
+<img src="https://github.com/NVIDIA/BROADCAST-VFX-SDK/blob/master/resources/superres.gif" alt="NVIDIA Super Resolution" width="640" height="320"/>
+ </p>
+
 NVIDIA VideoEffects SDK provides two sample applications that demonstrate the features listed above in real time by using offline videos.
 - **VideoEffects App**, which is a sample app that can invoke each feature individually.
 - **UpscalePipeline App**, which is a sample app that pipelines the Encoder Artifact Reduction feature with the Upscale feature.
