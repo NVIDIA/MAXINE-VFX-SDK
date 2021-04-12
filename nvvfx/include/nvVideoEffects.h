@@ -192,13 +192,17 @@ NvCV_Status NvVFX_API NvVFX_CudaStreamDestroy(CUstream stream);
 
 // Filter selectors
 #define NVVFX_FX_TRANSFER               "Transfer"
+#define NVVFX_FX_GREEN_SCREEN           "GreenScreen"         // Green Screen 
+#define NVVFX_FX_BGBLUR                 "BackgroundBlur"     // Background blur
 #define NVVFX_FX_ARTIFACT_REDUCTION     "ArtifactReduction"   // Artifact Reduction  
 #define NVVFX_FX_SUPER_RES              "SuperRes"            // Super Res 
 #define NVVFX_FX_SR_UPSCALE             "Upscale"             // Super Res Upscale 
+#define NVVFX_FX_DENOISING              "Denoising"           // Denoising 
 
 // Parameter selectors
 #define NVVFX_INPUT_IMAGE_0             "SrcImage0"           //!< There may be multiple input images
 #define NVVFX_INPUT_IMAGE               NVVFX_INPUT_IMAGE_0   //!< but there is usually only one input image
+#define NVVFX_INPUT_IMAGE_1             "SrcImage1"           //!< Source Image 1
 #define NVVFX_OUTPUT_IMAGE_0            "DstImage0"           //!< There may be multiple output images
 #define NVVFX_OUTPUT_IMAGE              NVVFX_OUTPUT_IMAGE_0  //!< but there is usually only one output image
 #define NVVFX_MODEL_DIRECTORY           "ModelDir"            //!< The directory where the model may be found
@@ -206,9 +210,14 @@ NvCV_Status NvVFX_API NvVFX_CudaStreamDestroy(CUstream stream);
 #define NVVFX_INFO                      "Info"                //!< Get info about the effects
 #define NVVFX_SCALE                     "Scale"               //!< Scale factor
 #define NVVFX_STRENGTH                  "Strength"            //!< Strength for different filters
+#define NVVFX_STRENGTH_LEVELS           "StrengthLevels"      //!< Number of strength levels
 #define NVVFX_MODE                      "Mode"                //!< Mode for different filters
 #define NVVFX_TEMPORAL                  "Temporal"            //!< Temporal mode: 0=image, 1=video
 #define NVVFX_GPU                       "GPU"                 //!< Preferred GPU (optional)
+#define NVVFX_BATCH_SIZE                "BatchSize"           //!< Batch Size (default 1)
+#define NVVFX_MODEL_BATCH               "ModelBatch"          //!< The preferred batching model to use (default 1)
+#define NVVFX_STATE                     "State"               //!< State variable  
+#define NVVFX_STATE_SIZE                "StateSize"           //!< Number of bytes needed to store state  
 
 
 

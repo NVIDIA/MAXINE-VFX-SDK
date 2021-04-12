@@ -26,6 +26,7 @@
 
 #include <chrono>
 #include <string>
+#include <iostream>
 
 #include "nvCVOpenCV.h"
 #include "nvVideoEffects.h"
@@ -51,6 +52,13 @@
 
 #define BAIL_IF_ERR(err)            do { if (0 != (err))          { goto bail;             } } while(0)
 #define BAIL_IF_NULL(x, err, code)  do { if ((void*)(x) == NULL)  { err = code; goto bail; } } while(0)
+#define NVCV_ERR_HELP 411
+
+#ifdef _WIN32
+#define DEFAULT_CODEC "avc1"
+#else // !_WIN32
+#define DEFAULT_CODEC "H264"
+#endif // _WIN32
 
 
 bool        FLAG_debug               = false,
@@ -60,7 +68,7 @@ bool        FLAG_debug               = false,
 int         FLAG_resolution          = 0,
             FLAG_arStrength          = 0;
 float       FLAG_upscaleStrength     = 0.2f;
-std::string FLAG_codec               = "H264",
+std::string FLAG_codec               = DEFAULT_CODEC,
             FLAG_inFile,
             FLAG_outFile,
             FLAG_outDir,
@@ -143,7 +151,7 @@ static void Usage() {
     "  --resolution=<height>               the desired height of the output\n"
     "  --out_height=<height>               the desired height of the output\n"
     "  --model_dir=<path>                  the path to the directory that contains the models\n"
-    "  --codec=<fourcc>                    the fourcc code for the desired codec (default \"H264\")\n"
+    "  --codec=<fourcc>                    the fourcc code for the desired codec (default " DEFAULT_CODEC ")\n"
     "  --progress                          show progress\n"
     "  --verbose                           verbose output\n"
     "  --debug                             print extra debugging information\n"
@@ -174,7 +182,7 @@ static int ParseMyArgs(int argc, char **argv) {
         )) {
       continue;
     } else if (GetFlagArgVal("help", arg, &help)) {
-      Usage();
+      return NVCV_ERR_HELP;
     } else if (arg[1] != '-') {
       for (++arg; *arg; ++arg) {
         if (*arg == 'v') {
@@ -267,6 +275,10 @@ static int StringToFourcc(const std::string& str) {
 
 struct FXApp {
   enum Err {
+    errQuit               = +1,                         // Application errors
+    errFlag               = +2,
+    errRead               = +3,
+    errWrite              = +4,
     errNone               = NVCV_SUCCESS,               // Video Effects SDK errors
     errGeneral            = NVCV_ERR_GENERAL,
     errUnimplemented      = NVCV_ERR_UNIMPLEMENTED,
@@ -286,6 +298,7 @@ struct FXApp {
     errResolution         = NVCV_ERR_RESOLUTION,
     errUnsupportedGPU     = NVCV_ERR_UNSUPPORTEDGPU,
     errWrongGPU           = NVCV_ERR_WRONGGPU,
+    errUnsupportedDriver  = NVCV_ERR_UNSUPPORTEDDRIVER,
     errCudaMemory         = NVCV_ERR_CUDA_MEMORY,       // CUDA errors
     errCudaValue          = NVCV_ERR_CUDA_VALUE,
     errCudaPitch          = NVCV_ERR_CUDA_PITCH,
@@ -296,10 +309,6 @@ struct FXApp {
     errCudaUnsupported    = NVCV_ERR_CUDA_UNSUPPORTED,
     errCudaIllegalAddress = NVCV_ERR_CUDA_ILLEGAL_ADDRESS,
     errCuda               = NVCV_ERR_CUDA,
-    errQuit               = -50,                        // Application errors
-    errFlag               = -51,
-    errRead               = -52,
-    errWrite              = -53,
   };
 
   FXApp()   { _arEff = nullptr; _upscaleEff = nullptr; _inited = false; _showFPS = false; _progress = false;
@@ -346,11 +355,9 @@ const char* FXApp::errorStringFromCode(Err code) {
     { errQuit,    "The user chose to quit the application"                },
     { errFlag,    "There was a problem with the command-line arguments"   },
   };
-  if ((int)code >= (int)errCuda)
-    return NvCV_GetErrorStringFromCode((NvCV_Status)code);
+  if ((int)code <= 0) return NvCV_GetErrorStringFromCode((NvCV_Status)code);
   for (const LutEntry *p = lut; p != &lut[sizeof(lut) / sizeof(lut[0])]; ++p)
-    if (p->code == code)
-      return p->str;
+    if (p->code == code) return p->str;
   return "UNKNOWN ERROR";
 }
 
@@ -447,10 +454,10 @@ NvCV_Status FXApp::allocBuffers(unsigned width, unsigned height) {
   BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_interGpuBGRf32pl, _srcImg.cols, _srcImg.rows, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_GPU, 1));  // intermediate GPU
   BAIL_IF_ERR(vfxErr = NvVFX_SetF32(_upscaleEff, NVVFX_STRENGTH, FLAG_upscaleStrength));
   BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_interGpuRGBAu8, _srcImg.cols, _srcImg.rows, NVCV_RGBA, NVCV_U8,
-                                       NVCV_INTERLEAVED, NVCV_GPU, 1));                             // intermediate GPU
+                                       NVCV_INTERLEAVED, NVCV_GPU, 32));                            // intermediate GPU
 
   BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_dstGpuBuf, _dstImg.cols, _dstImg.rows, NVCV_RGBA, NVCV_U8, NVCV_INTERLEAVED,
-                                       NVCV_GPU, 1));                                               // dst GPU
+                                       NVCV_GPU, 32));                                              // dst GPU
   NVWrapperForCVMat(&_srcImg, &_srcVFX);      // _srcVFX is an alias for _srcImg
   NVWrapperForCVMat(&_dstImg, &_dstVFX);      // _dstVFX is an alias for _dstImg
 
@@ -510,7 +517,7 @@ bail:
 }
 
 FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
-  const int       fourcc_h264 = CV_FOURCC('H','2','6','4');
+  const int       fourcc_h264 = cv::VideoWriter::fourcc('H','2','6','4');
   CUstream        stream      = 0;
   FXApp::Err      appErr      = errNone;
   bool            ok;
@@ -526,7 +533,7 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
   }
 
   GetVideoInfo(reader, inFile, &info);
-  if (!(fourcc_h264 == info.codec || CV_FOURCC('a','v','c','1') == info.codec)) // avc1 is alias for h264
+  if (!(fourcc_h264 == info.codec || cv::VideoWriter::fourcc('a','v','c','1') == info.codec)) // avc1 is alias for h264
     printf("Filters only target H264 videos, not %.4s\n", (char*)&info.codec);
 
   BAIL_IF_ERR(vfxErr = allocBuffers(info.width, info.height));

@@ -27,7 +27,7 @@
 #include <chrono>
 #include <string>
 #include <iostream>
-
+#include <cuda_runtime_api.h>
 #include "nvCVOpenCV.h"
 #include "nvVideoEffects.h"
 #include "opencv2/opencv.hpp"
@@ -57,14 +57,18 @@ bool        FLAG_debug          = false,
             FLAG_progress       = false,
             FLAG_webcam         = false;
 float       FLAG_strength       = 0.f;
-int         FLAG_resolution     = 0;
 std::string FLAG_codec          = DEFAULT_CODEC,
             FLAG_camRes         = "1280x720",
             FLAG_inFile,
             FLAG_outFile,
             FLAG_outDir,
-            FLAG_modelDir,
-            FLAG_effect;
+            FLAG_modelDir;
+
+
+// Set this when using OTA Updates
+// This path is used by nvVideoEffectsProxy.cpp to load the SDK dll
+// when using  OTA Updates
+char *g_nvVFXSDKPath = NULL;
 
 static bool GetFlagArgVal(const char *flag, const char *arg, const char **val) {
   if (*arg != '-')
@@ -133,29 +137,19 @@ static bool GetFlagArgVal(const char *flag, const char *arg, int *val) {
 
 static void Usage() {
   printf(
-    "VideoEffectsApp [args ...]\n"
+    "DenoiseEffectApp [args ...]\n"
     "  where args is:\n"
-    "  --in_file=<path>           input file to be processed\n"
+    "  --in_file=<path>           input file to be processed (can be an image but the best denoising performance is observed on videos)\n"
     "  --webcam                   use a webcam as the input\n"
     "  --out_file=<path>          output file to be written\n"
-    "  --effect=<effect>          the effect to apply\n"
     "  --show                     display the results in a window (for webcam, it is always true)\n"
-    "  --strength=<value>         strength of an effect, 0 or 1 for super res and artifact reduction,\n"
-    "                             and [0.0, 1.0] for upscaling\n"
-    "  --cam_res=[WWWx]HHH        specify camera resolution as height or width x height\n"
-    "                             supports 720 and 1080 resolutions (default \"720\") \n"
-    "  --resolution=<height>      the desired height of the output\n"
+    "  --strength=<value>         strength of an effect [0-1]\n"
     "  --model_dir=<path>         the path to the directory that contains the models\n"
     "  --codec=<fourcc>           the fourcc code for the desired codec (default " DEFAULT_CODEC ")\n"
     "  --progress                 show progress\n"
     "  --verbose                  verbose output\n"
     "  --debug                    print extra debugging information\n"
   );
-  const char* cStr;
-  NvCV_Status err = NvVFX_GetString(nullptr, NVVFX_INFO, &cStr);
-  if (NVCV_SUCCESS != err)
-    printf("Cannot get effects: %s\n", NvCV_GetErrorStringFromCode(err));
-  printf("where effects are:\n%s", cStr);
 }
 
 static int ParseMyArgs(int argc, char **argv) {
@@ -171,12 +165,10 @@ static int ParseMyArgs(int argc, char **argv) {
         GetFlagArgVal("in_file",      arg, &FLAG_inFile)      ||
         GetFlagArgVal("out",          arg, &FLAG_outFile)     ||
         GetFlagArgVal("out_file",     arg, &FLAG_outFile)     ||
-        GetFlagArgVal("effect",       arg, &FLAG_effect)      ||
         GetFlagArgVal("show",         arg, &FLAG_show)        ||
         GetFlagArgVal("webcam",       arg, &FLAG_webcam)      ||
         GetFlagArgVal("cam_res",      arg, &FLAG_camRes)      ||
         GetFlagArgVal("strength",     arg, &FLAG_strength)    ||
-        GetFlagArgVal("resolution",   arg, &FLAG_resolution)  ||
         GetFlagArgVal("model_dir",    arg, &FLAG_modelDir)    ||
         GetFlagArgVal("codec",        arg, &FLAG_codec)       ||
         GetFlagArgVal("progress",     arg, &FLAG_progress)    ||
@@ -268,11 +260,11 @@ static void GetVideoInfo(cv::VideoCapture& reader, const char *fileName, VideoIn
 }
 
 static int StringToFourcc(const std::string& str) {
-    union chint { int i; char c[4]; };
-    chint x = { 0 };
-    for (int n = (str.size() < 4) ? (int)str.size() : 4; n--;)
-      x.c[n] = str[n];
-    return x.i;
+  union chint { int i; char c[4]; };
+  chint x = { 0 };
+  for (int n = (str.size() < 4) ? (int)str.size() : 4; n--;)
+    x.c[n] = str[n];
+  return x.i;
 }
 
 struct FXApp {
@@ -396,6 +388,7 @@ FXApp::Err FXApp::processKey(int key) {
   case 'p': case 'P': case '%':
     _progress = !_progress;
   case 'e': case 'E':
+      _enableEffect = !_enableEffect; 
     break;
   case 'd': case'D':
     if (FLAG_webcam)
@@ -428,9 +421,10 @@ FXApp::Err FXApp::initCamera(cv::VideoCapture& cap) {
 
     if (camWidth) cap.set(cv::CAP_PROP_FRAME_WIDTH, camWidth);
     if (camHeight) cap.set(cv::CAP_PROP_FRAME_HEIGHT, camHeight);
-    if (camWidth != cap.get(cv::CAP_PROP_FRAME_WIDTH) || camHeight != cap.get(cv::CAP_PROP_FRAME_HEIGHT)) {
-      printf("Error: Camera does not support %d x %d resolution\n", camWidth, camHeight);
-      return errGeneral;
+    int actualCamWidth = cap.get(cv::CAP_PROP_FRAME_WIDTH);
+    int actualCamHeight = cap.get(cv::CAP_PROP_FRAME_HEIGHT);
+    if (camWidth != actualCamWidth || camHeight != actualCamHeight) {
+      printf("The requested resolution of %d x %d is not available and has been subsituted by %d x %d.\n", camWidth, camHeight, actualCamWidth, actualCamHeight);
     }
   }
   return errNone;
@@ -470,15 +464,6 @@ bail:
   return vfxErr;
 }
 
-static NvCV_Status CheckScaleIsotropy(const NvCVImage *src, const NvCVImage *dst) {
-  if (src->width * dst->height != src->height * dst->width) {
-    printf("%ux%u --> %ux%u: different scale for width and height is not supported\n",
-      src->width, src->height, dst->width, dst->height);
-    return NVCV_ERR_RESOLUTION;
-  }
-  return NVCV_SUCCESS;
-}
-
 NvCV_Status FXApp::allocBuffers(unsigned width, unsigned height) {
   NvCV_Status  vfxErr = NVCV_SUCCESS;
 
@@ -489,46 +474,12 @@ NvCV_Status FXApp::allocBuffers(unsigned width, unsigned height) {
     _srcImg.create(height, width, CV_8UC3);                                                                                        // src CPU
     BAIL_IF_NULL(_srcImg.data, vfxErr, NVCV_ERR_MEMORY);
   }
-  if (!strcmp(_effectName, NVVFX_FX_TRANSFER)) {
-    _dstImg.create(_srcImg.rows, _srcImg.cols, _srcImg.type());                                                                    // dst CPU
-    BAIL_IF_NULL(_dstImg.data, vfxErr, NVCV_ERR_MEMORY);
-    BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_srcGpuBuf, _srcImg.cols, _srcImg.rows, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_GPU, 1));  // src GPU
-    BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_dstGpuBuf, _dstImg.cols, _dstImg.rows, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_GPU, 1));  // dst GPU
-  }
-  else if (!strcmp(_effectName, NVVFX_FX_ARTIFACT_REDUCTION)) {
-    _dstImg.create(_srcImg.rows, _srcImg.cols, _srcImg.type());                                                                    // dst CPU
-    BAIL_IF_NULL(_dstImg.data, vfxErr, NVCV_ERR_MEMORY);
-    BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_srcGpuBuf, _srcImg.cols, _srcImg.rows, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_GPU, 1));  // src GPU
-    BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_dstGpuBuf, _dstImg.cols, _dstImg.rows, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_GPU, 1));  // dst GPU
-  }
-  else if (!strcmp(_effectName, NVVFX_FX_SUPER_RES)) {
-    if (!FLAG_resolution) {
-      printf("--resolution has not been specified\n");
-      return NVCV_ERR_PARAMETER;
-    }
-    int dstWidth = _srcImg.cols * FLAG_resolution / _srcImg.rows;
-    _dstImg.create(FLAG_resolution, dstWidth, _srcImg.type());                                                                     // dst CPU
-    BAIL_IF_NULL(_dstImg.data, vfxErr, NVCV_ERR_MEMORY);
-    BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_srcGpuBuf, _srcImg.cols, _srcImg.rows, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_GPU, 1));  // src GPU
-    BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_dstGpuBuf, _dstImg.cols, _dstImg.rows, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_GPU, 1));  // dst GPU
-    BAIL_IF_ERR(vfxErr = CheckScaleIsotropy(&_srcGpuBuf, &_dstGpuBuf));
-  }
-  else if (!strcmp(_effectName, NVVFX_FX_SR_UPSCALE)) {
-    if (!FLAG_resolution) {
-      printf("--resolution has not been specified\n");
-      return NVCV_ERR_PARAMETER;
-    }
+  
+  _dstImg.create(_srcImg.rows, _srcImg.cols, _srcImg.type()); // 
+  BAIL_IF_NULL(_dstImg.data, vfxErr, NVCV_ERR_MEMORY); // 
+  BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_srcGpuBuf, _srcImg.cols, _srcImg.rows, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_GPU, 1));  // src GPU 
+  BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_dstGpuBuf, _srcImg.cols, _srcImg.rows, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_GPU, 1)); //dst GPU
 
-    BAIL_IF_ERR(vfxErr = NvVFX_SetF32(_eff, NVVFX_STRENGTH, FLAG_strength));
-    int dstWidth = _srcImg.cols * FLAG_resolution / _srcImg.rows;
-    _dstImg.create(FLAG_resolution, dstWidth, _srcImg.type());  // dst CPU
-    BAIL_IF_NULL(_dstImg.data, vfxErr, NVCV_ERR_MEMORY);
-    BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_srcGpuBuf, _srcImg.cols, _srcImg.rows, NVCV_RGBA, NVCV_U8, NVCV_INTERLEAVED,
-                                         NVCV_GPU, 32));  // src GPU
-    BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_dstGpuBuf, _dstImg.cols, _dstImg.rows, NVCV_RGBA, NVCV_U8, NVCV_INTERLEAVED,
-                                         NVCV_GPU, 32));  // dst GPU
-    BAIL_IF_ERR(vfxErr = CheckScaleIsotropy(&_srcGpuBuf, &_dstGpuBuf));
-  }
   NVWrapperForCVMat(&_srcImg, &_srcVFX);      // _srcVFX is an alias for _srcImg
   NVWrapperForCVMat(&_dstImg, &_dstVFX);      // _dstVFX is an alias for _dstImg
 
@@ -547,6 +498,9 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
   CUstream      stream  = 0;
   NvCV_Status   vfxErr;
 
+  void* state = nullptr;
+  void* stateArray[1];
+
   if (!_eff)
     return errEffect;
   _srcImg = cv::imread(inFile);
@@ -554,21 +508,21 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
     return errRead;
 
   BAIL_IF_ERR(vfxErr = allocBuffers(_srcImg.cols, _srcImg.rows));
-
-  // Since images are uploaded asynchronously, we may as well do this first.
-  BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_srcVFX, &_srcGpuBuf, 1.f/255.f, stream, &_tmpVFX)); // _srcVFX--> _tmpVFX --> _srcGpuBuf
-  BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_INPUT_IMAGE,  &_srcGpuBuf));
-  BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_OUTPUT_IMAGE, &_dstGpuBuf));
-  BAIL_IF_ERR(vfxErr = NvVFX_SetCudaStream(_eff, NVVFX_CUDA_STREAM, stream));
-  if (!strcmp(_effectName, NVVFX_FX_ARTIFACT_REDUCTION)) {
-    BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned int)FLAG_strength));
-  } else if (!strcmp(_effectName, NVVFX_FX_SUPER_RES)) {
-    BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned int)FLAG_strength));
-  }
+  BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_srcVFX, &_srcGpuBuf, 1.f / 255.f, stream, &_tmpVFX)); // _srcVFX--> _tmpVFX --> _srcGpuBuf
+  BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_INPUT_IMAGE, &_srcGpuBuf));
+  BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_OUTPUT_IMAGE, &_dstGpuBuf)); 
+  BAIL_IF_ERR(vfxErr = NvVFX_SetF32(_eff, NVVFX_STRENGTH, FLAG_strength));
+  
+  unsigned int stateSizeInBytes;
+  BAIL_IF_ERR(vfxErr = NvVFX_GetU32(_eff, NVVFX_STATE_SIZE, &stateSizeInBytes));
+  cudaMalloc(&state, stateSizeInBytes);
+  cudaMemsetAsync(state, 0, stateSizeInBytes, stream);
+  stateArray[0] = state;
+  BAIL_IF_ERR(vfxErr = NvVFX_SetObject(_eff, NVVFX_STATE, (void*)stateArray));
 
   BAIL_IF_ERR(vfxErr = NvVFX_Load(_eff));
-  BAIL_IF_ERR(vfxErr = NvVFX_Run(_eff, 0));                                                   // _srcGpuBuf --> _dstGpuBuf
-  BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_dstGpuBuf, &_dstVFX, 255.f, stream, &_tmpVFX));   // _dstGpuBuf --> _tmpVFX --> _dstVFX
+  BAIL_IF_ERR(vfxErr = NvVFX_Run(_eff, 0));
+  BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_dstGpuBuf, &_dstVFX, 255.f, stream, &_tmpVFX));
 
   if (outFile && outFile[0]) {
     if (!cv::imwrite(outFile, _dstImg)) {
@@ -581,6 +535,7 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
     cv::waitKey(3000);
   }
 bail:
+  if (state)  cudaFree(state); // release state memory
   return appErrFromVfxStatus(vfxErr);
 }
 
@@ -595,6 +550,9 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
   unsigned        frameNum;
   VideoInfo       info;
 
+  void* state = nullptr;
+  void* stateArray[1];
+ 
   if (inFile && !inFile[0]) inFile = nullptr;  // Set file paths to NULL if zero length
 
   if (!FLAG_webcam && inFile) {
@@ -616,7 +574,7 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
     printf("Filters only target H264 videos, not %.4s\n", (char*)&info.codec);
 
   BAIL_IF_ERR(vfxErr = allocBuffers(info.width, info.height));
-
+  
   if (outFile && !outFile[0]) outFile = nullptr;
   if (outFile) {
     ok = writer.open(outFile, StringToFourcc(FLAG_codec), info.frameRate, cv::Size(_dstVFX.width, _dstVFX.height));
@@ -628,41 +586,41 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
     }
   }
 
-  BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_INPUT_IMAGE,  &_srcGpuBuf));
+  BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_INPUT_IMAGE,  &_srcGpuBuf)); 
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_OUTPUT_IMAGE, &_dstGpuBuf));
-  BAIL_IF_ERR(vfxErr = NvVFX_SetCudaStream(_eff, NVVFX_CUDA_STREAM, stream));
-  if (!strcmp(_effectName, NVVFX_FX_ARTIFACT_REDUCTION)) {
-    BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned int)FLAG_strength));
-  } else if (!strcmp(_effectName, NVVFX_FX_SUPER_RES)) {
-    BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned int)FLAG_strength));
-  }
+  BAIL_IF_ERR(vfxErr = NvVFX_SetF32(_eff, NVVFX_STRENGTH, FLAG_strength));
+
+  unsigned int stateSizeInBytes;
+  BAIL_IF_ERR(vfxErr = NvVFX_GetU32(_eff, NVVFX_STATE_SIZE, &stateSizeInBytes));
+  cudaMalloc(&state, stateSizeInBytes);
+  cudaMemsetAsync(state, 0, stateSizeInBytes, stream);
+  stateArray[0] = state;
+  BAIL_IF_ERR(vfxErr = NvVFX_SetObject(_eff, NVVFX_STATE, (void*)stateArray));
+
   BAIL_IF_ERR(vfxErr = NvVFX_Load(_eff));
-
-  for (frameNum = 0; reader.read(_srcImg); ++frameNum) {
-    if (_srcImg.empty()) {
-      printf("Frame %u is empty\n", frameNum);
-    }
-
-    // _srcVFX   --> _srcTmpVFX --> _srcGpuBuf --> _dstGpuBuf --> _dstTmpVFX --> _dstVFX
+  
+  for (frameNum = 0; reader.read(_srcImg); frameNum++) {
     if (_enableEffect) {
       BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_srcVFX, &_srcGpuBuf, 1.f / 255.f, stream, &_tmpVFX));
       BAIL_IF_ERR(vfxErr = NvVFX_Run(_eff, 0));
       BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_dstGpuBuf, &_dstVFX, 255.f, stream, &_tmpVFX));
     } else {
-      BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_srcVFX, &_dstVFX, 1.f / 255.f, stream, &_tmpVFX));
+      BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_srcVFX, &_dstVFX, 1.f, stream, &_tmpVFX));
+      cudaMemsetAsync(state, 0, stateSizeInBytes, stream);// reset state by setting to 0
     }
 
     if (outFile)
       writer.write(_dstImg);
 
     if (_show) {
+      if (_drawVisualization)  drawEffectStatus(_dstImg); 
       drawFrameRate(_dstImg);
       cv::imshow("Output", _dstImg);
       int key= cv::waitKey(1);
       if (key > 0) {
-          appErr = processKey(key);
-          if (errQuit == appErr)
-            break;
+        appErr = processKey(key);
+        if (errQuit == appErr)
+          break;
       }
     }
     if (_progress)
@@ -672,8 +630,9 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
   if (_progress) fprintf(stderr, "\n");
   reader.release();
   if (outFile)
-    writer.release();
+    writer.release(); 
 bail:
+  if (state)  cudaFree(state); // release state memory
   return appErrFromVfxStatus(vfxErr);
 }
 
@@ -686,11 +645,6 @@ int main(int argc, char **argv) {
   if (nErrs)
     std::cerr << nErrs << " command line syntax problems\n";
 
-  if (FLAG_verbose) {
-    const char *cstr = nullptr;
-    NvVFX_GetString(nullptr, NVVFX_INFO, &cstr);
-    std::cerr << "Effects:" << std::endl << cstr << std::endl;
-  }
   if (FLAG_webcam) {
     // If webcam is on, enable showing the results and turn off displaying the progress
     if (FLAG_progress) FLAG_progress = !FLAG_progress;
@@ -704,10 +658,6 @@ int main(int argc, char **argv) {
     std::cerr << "Please specify --out_file=XXX or --show\n";
     ++nErrs;
   }
-  if (FLAG_effect.empty()) {
-    std::cerr << "Please specify --effect=XXX\n";
-    ++nErrs;
-  }
   app._progress = FLAG_progress;
   app.setShow(FLAG_show);
 
@@ -716,9 +666,9 @@ int main(int argc, char **argv) {
     fxErr = FXApp::errFlag;
   }
   else {
-    fxErr = app.createEffect(FLAG_effect.c_str(), FLAG_modelDir.c_str());
+    fxErr = app.createEffect(NVVFX_FX_DENOISING, FLAG_modelDir.c_str());
     if (FXApp::errNone != fxErr) {
-      std::cerr << "Error creating effect \"" << FLAG_effect << "\"\n";
+      std::cerr << "Error creating effect\n";
     }
     else {
       if (IsImageFile(FLAG_inFile.c_str()))
