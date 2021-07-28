@@ -64,11 +64,13 @@
 bool        FLAG_debug               = false,
             FLAG_verbose             = false,
             FLAG_show                = false,
-            FLAG_progress            = false;
+            FLAG_progress            = false,
+            FLAG_webcam              = false;
 int         FLAG_resolution          = 0,
             FLAG_arStrength          = 0;
 float       FLAG_upscaleStrength     = 0.2f;
 std::string FLAG_codec               = DEFAULT_CODEC,
+            FLAG_camRes              = "1280x720",
             FLAG_inFile,
             FLAG_outFile,
             FLAG_outDir,
@@ -144,10 +146,13 @@ static void Usage() {
     "UpscalePipelineApp [args ...]\n"
     "  where args is:\n"
     "  --in_file=<path>                    input file to be processed\n"
+    "  --webcam                            use a webcam as the input\n"
     "  --out_file=<path>                   output file to be written\n"
     "  --show                              display the results in a window\n"
     "  --ar_strength=(0|1)                 strength of artifact reduction filter (0: conservative, 1: aggressive, default 0)\n"
     "  --upscale_strength=(0 to 1)         strength of upscale filter (float value between 0 to 1)\n"
+    "  --cam_res=[WWWx]HHH                 specify camera resolution as height or width x height\n"
+    "                                      supports 720 and 1080 resolutions (default \"720\") \n"
     "  --resolution=<height>               the desired height of the output\n"
     "  --out_height=<height>               the desired height of the output\n"
     "  --model_dir=<path>                  the path to the directory that contains the models\n"
@@ -172,6 +177,8 @@ static int ParseMyArgs(int argc, char **argv) {
         GetFlagArgVal("out",              arg, &FLAG_outFile)     ||
         GetFlagArgVal("out_file",         arg, &FLAG_outFile)     ||
         GetFlagArgVal("show",             arg, &FLAG_show)        ||
+        GetFlagArgVal("webcam",           arg, &FLAG_webcam)      ||
+        GetFlagArgVal("cam_res",          arg, &FLAG_camRes)      ||
         GetFlagArgVal("ar_strength",      arg, &FLAG_arStrength)  ||
         GetFlagArgVal("upscale_strength", arg, &FLAG_upscaleStrength)  ||
         GetFlagArgVal("resolution",       arg, &FLAG_resolution)  ||
@@ -312,7 +319,7 @@ struct FXApp {
   };
 
   FXApp()   { _arEff = nullptr; _upscaleEff = nullptr; _inited = false; _showFPS = false; _progress = false;
-              _show = false; _framePeriod = 0.f; }
+              _show = false; _drawVisualization = true, _framePeriod = 0.f; }
   ~FXApp()  { destroyEffects(); }
 
   void          setShow(bool show) { _show = show; }
@@ -322,6 +329,7 @@ struct FXApp {
   NvCV_Status   allocTempBuffers();
   Err           processImage(const char *inFile, const char *outFile);
   Err           processMovie(const char *inFile, const char *outFile);
+  Err           initCamera(cv::VideoCapture& cap);
   Err           processKey(int key);
   void          drawFrameRate(cv::Mat& img);
   Err           appErrFromVfxStatus(NvCV_Status status)  { return (Err)status; }
@@ -342,6 +350,7 @@ struct FXApp {
   bool          _inited;
   bool          _showFPS;
   bool          _progress;
+  bool          _drawVisualization;
   float         _framePeriod;
   std::chrono::high_resolution_clock::time_point _lastTime;
 };
@@ -374,6 +383,7 @@ void FXApp::drawFrameRate(cv::Mat &img) {
     if (_showFPS) {
       char buf[32];
       snprintf(buf, sizeof(buf), "%.1f", 1. / _framePeriod);
+      printf("fps: %s\n", buf);
       cv::putText(img, buf, cv::Point(10, img.rows - 10), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255, 255, 255), 1);
     }
   } else {            // Ludicrous time interval; reset
@@ -393,9 +403,43 @@ FXApp::Err FXApp::processKey(int key) {
     break;
   case 'p': case 'P': case '%':
     _progress = !_progress;
+  case 'e': case 'E':
+    break;
+  case 'd': case'D':
+    if (FLAG_webcam)
+      _drawVisualization = !_drawVisualization;
     break;
   default:
     break;
+  }
+  return errNone;
+}
+
+FXApp::Err FXApp::initCamera(cv::VideoCapture& cap) {
+  const int camIndex = 0;
+  cap.open(camIndex);
+  if (!FLAG_camRes.empty()) {
+    int camWidth, camHeight, n;
+    n = sscanf(FLAG_camRes.c_str(), "%d%*[xX]%d", &camWidth, &camHeight);
+    switch (n) {
+    case 2:
+      break;  // We have read both width and height
+    case 1:
+      camHeight = camWidth;
+      camWidth = (int)(camHeight * (16. / 9.) + .5);
+      break;
+    default:
+      camHeight = 0;
+      camWidth = 0;
+      break;
+    }
+
+    if (camWidth) cap.set(cv::CAP_PROP_FRAME_WIDTH, camWidth);
+    if (camHeight) cap.set(cv::CAP_PROP_FRAME_HEIGHT, camHeight);
+    if (camWidth != cap.get(cv::CAP_PROP_FRAME_WIDTH) || camHeight != cap.get(cv::CAP_PROP_FRAME_HEIGHT)) {
+      printf("Error: Camera does not support %d x %d resolution\n", camWidth, camHeight);
+      return errGeneral;
+    }
   }
   return errNone;
 }
@@ -521,19 +565,30 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
   CUstream        stream      = 0;
   FXApp::Err      appErr      = errNone;
   bool            ok;
+  cv::VideoCapture reader;
   cv::VideoWriter writer;
   NvCV_Status     vfxErr;
   unsigned        frameNum;
   VideoInfo       info;
 
-  cv::VideoCapture reader(inFile);
+  if (inFile && !inFile[0]) inFile = nullptr;  // Set file paths to NULL if zero length
+
+  if (!FLAG_webcam && inFile) {
+    reader.open(inFile);
+  } else {
+    appErr = initCamera(reader);
+    if (appErr != errNone)
+      return appErr;
+  }
+
   if (!reader.isOpened()) {
-    printf("Error: Could not open video: \"%s\"\n", inFile);
+    if (!FLAG_webcam) printf("Error: Could not open video: \"%s\"\n", inFile);
+    else              printf("Error: Webcam not found\n");
     return errRead;
   }
 
-  GetVideoInfo(reader, inFile, &info);
-  if (!(fourcc_h264 == info.codec || cv::VideoWriter::fourcc('a','v','c','1') == info.codec)) // avc1 is alias for h264
+  GetVideoInfo(reader, (inFile ? inFile : "webcam"), &info);
+  if (!(fourcc_h264 == info.codec || cv::VideoWriter::fourcc('a', 'v', 'c', '1') == info.codec)) // avc1 is alias for h264
     printf("Filters only target H264 videos, not %.4s\n", (char*)&info.codec);
 
   BAIL_IF_ERR(vfxErr = allocBuffers(info.width, info.height));
@@ -577,6 +632,7 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
       writer.write(_dstImg);
     if (_show) {
       drawFrameRate(_dstImg);
+      cv::namedWindow("Output", cv::WINDOW_NORMAL);
       cv::imshow("Output", _dstImg);
       int key= cv::waitKey(1);
       if (key > 0) {
@@ -606,8 +662,13 @@ int main(int argc, char **argv) {
   if (nErrs)
     std::cerr << nErrs << " command line syntax problems\n";
 
-  if (FLAG_inFile.empty()) {
-    std::cerr << "Please specify --in_file=XXX\n";
+  if (FLAG_webcam) {
+    // If webcam is on, enable showing the results and turn off displaying the progress
+    if (FLAG_progress) FLAG_progress = !FLAG_progress;
+    if (!FLAG_show)     FLAG_show = !FLAG_show;
+  }
+  if (FLAG_inFile.empty() && !FLAG_webcam) {
+    std::cerr << "Please specify --in_file=XXX or --webcam=true\n";
     ++nErrs;
   }
   if (FLAG_outFile.empty() && !FLAG_show) {
