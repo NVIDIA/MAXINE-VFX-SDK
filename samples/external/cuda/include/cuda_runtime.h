@@ -188,7 +188,8 @@ struct  __device_builtin__ __nv_lambda_preheader_injection { };
  * ::cudaErrorInvalidPtx,
  * ::cudaErrorUnsupportedPtxVersion,
  * ::cudaErrorNoKernelImageForDevice,
- * ::cudaErrorJitCompilerNotFound
+ * ::cudaErrorJitCompilerNotFound,
+ * ::cudaErrorJitCompilationDisabled
  * \notefnerr
  * \note_async
  * \note_null_stream
@@ -626,6 +627,57 @@ static __inline__ __host__ cudaError_t cudaMallocPitch(
 )
 {
   return ::cudaMallocPitch((void**)(void*)devPtr, pitch, width, height);
+}
+
+/**
+ * \brief Allocate from a pool
+ *
+ * This is an alternate spelling for cudaMallocFromPoolAsync
+ * made available through operator overloading.
+ *
+ * \sa ::cudaMallocFromPoolAsync,
+ * \ref ::cudaMallocAsync(void** ptr, size_t size, cudaStream_t hStream)  "cudaMallocAsync (C API)"
+ */
+static __inline__ __host__ cudaError_t cudaMallocAsync(
+  void        **ptr,
+  size_t        size,
+  cudaMemPool_t memPool,
+  cudaStream_t  stream
+)
+{
+  return ::cudaMallocFromPoolAsync(ptr, size, memPool, stream);
+}
+
+template<class T>
+static __inline__ __host__ cudaError_t cudaMallocAsync(
+  T           **ptr,
+  size_t        size,
+  cudaMemPool_t memPool,
+  cudaStream_t  stream
+)
+{
+  return ::cudaMallocFromPoolAsync((void**)(void*)ptr, size, memPool, stream);
+}
+
+template<class T>
+static __inline__ __host__ cudaError_t cudaMallocAsync(
+  T           **ptr,
+  size_t        size,
+  cudaStream_t  stream
+)
+{
+  return ::cudaMallocAsync((void**)(void*)ptr, size, stream);
+}
+
+template<class T>
+static __inline__ __host__ cudaError_t cudaMallocFromPoolAsync(
+  T           **ptr,
+  size_t        size,
+  cudaMemPool_t memPool,
+  cudaStream_t  stream
+)
+{
+  return ::cudaMallocFromPoolAsync((void**)(void*)ptr, size, memPool, stream);
 }
 
 #if defined(__CUDACC__)
@@ -1189,6 +1241,59 @@ static __inline__ __host__ cudaError_t cudaGraphExecMemcpyNodeSetParamsFromSymbo
 {
   return ::cudaGraphExecMemcpyNodeSetParamsFromSymbol(hGraphExec, node, dst, (const void*)&symbol, count, offset, kind);
 }
+
+#if __cplusplus >= 201103
+
+/**
+ * \brief Creates a user object by wrapping a C++ object
+ *
+ * TODO detail
+ *
+ * \param object_out      - Location to return the user object handle
+ * \param objectToWrap    - This becomes the \ptr argument to ::cudaUserObjectCreate. A
+ *                          lambda will be passed for the \p destroy argument, which calls
+ *                          delete on this object pointer.
+ * \param initialRefcount - The initial refcount to create the object with, typically 1. The
+ *                          initial references are owned by the calling thread.
+ * \param flags           - Currently it is required to pass cudaUserObjectNoDestructorSync,
+ *                          which is the only defined flag. This indicates that the destroy
+ *                          callback cannot be waited on by any CUDA API. Users requiring
+ *                          synchronization of the callback should signal its completion
+ *                          manually.
+ *
+ * \return
+ * ::cudaSuccess,
+ * ::cudaErrorInvalidValue
+ *
+ * \sa
+ * ::cudaUserObjectCreate
+ */
+template<class T>
+static __inline__ __host__ cudaError_t cudaUserObjectCreate(
+    cudaUserObject_t *object_out,
+    T *objectToWrap,
+    unsigned int initialRefcount,
+    unsigned int flags)
+{
+    return ::cudaUserObjectCreate(
+            object_out,
+            objectToWrap,
+            [](void *vpObj) { delete reinterpret_cast<T *>(vpObj); },
+            initialRefcount,
+            flags);
+}
+
+template<class T>
+static __inline__ __host__ cudaError_t cudaUserObjectCreate(
+    cudaUserObject_t *object_out,
+    T *objectToWrap,
+    unsigned int initialRefcount,
+    cudaUserObjectFlags flags)
+{
+    return cudaUserObjectCreate(object_out, objectToWrap, initialRefcount, (unsigned int)flags);
+}
+
+#endif
 
 /**
  * \brief \hl Finds the address associated with a CUDA symbol

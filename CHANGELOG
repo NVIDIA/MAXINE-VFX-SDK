@@ -1,0 +1,8 @@
+Changelog (v0.6.5.2)
+  - AI Green Screen filter
+   - Quality mode is updated for higher quality
+   - Added CUDA graph optimization which may improve overall latency under a GPU-intensive workload.
+ - Super Resolution filter
+    - 4K input support for 4/3x(~1.33x), 1.5x and 2x super resolution
+ - Migrated to TensorRT 8.0.1.6
+ - Migrated to CUDA 11.3u1

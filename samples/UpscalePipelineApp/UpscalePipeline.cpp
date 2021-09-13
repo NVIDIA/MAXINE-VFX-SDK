@@ -66,13 +66,18 @@ bool        FLAG_debug               = false,
             FLAG_show                = false,
             FLAG_progress            = false;
 int         FLAG_resolution          = 0,
-            FLAG_arStrength          = 0;
+            FLAG_arMode              = 0;
 float       FLAG_upscaleStrength     = 0.2f;
 std::string FLAG_codec               = DEFAULT_CODEC,
             FLAG_inFile,
             FLAG_outFile,
             FLAG_outDir,
             FLAG_modelDir;
+
+// Set this when using OTA Updates
+// This path is used by nvVideoEffectsProxy.cpp to load the SDK dll
+// when using  OTA Updates
+char *g_nvVFXSDKPath = NULL;
 
 static bool GetFlagArgVal(const char *flag, const char *arg, const char **val) {
   if (*arg != '-')
@@ -146,7 +151,7 @@ static void Usage() {
     "  --in_file=<path>                    input file to be processed\n"
     "  --out_file=<path>                   output file to be written\n"
     "  --show                              display the results in a window\n"
-    "  --ar_strength=(0|1)                 strength of artifact reduction filter (0: conservative, 1: aggressive, default 0)\n"
+    "  --ar_mode=(0|1)                     mode of artifact reduction filter (0: conservative, 1: aggressive, default 0)\n"
     "  --upscale_strength=(0 to 1)         strength of upscale filter (float value between 0 to 1)\n"
     "  --resolution=<height>               the desired height of the output\n"
     "  --out_height=<height>               the desired height of the output\n"
@@ -172,7 +177,7 @@ static int ParseMyArgs(int argc, char **argv) {
         GetFlagArgVal("out",              arg, &FLAG_outFile)     ||
         GetFlagArgVal("out_file",         arg, &FLAG_outFile)     ||
         GetFlagArgVal("show",             arg, &FLAG_show)        ||
-        GetFlagArgVal("ar_strength",      arg, &FLAG_arStrength)  ||
+        GetFlagArgVal("ar_mode",          arg, &FLAG_arMode)      ||
         GetFlagArgVal("upscale_strength", arg, &FLAG_upscaleStrength)  ||
         GetFlagArgVal("resolution",       arg, &FLAG_resolution)  ||
         GetFlagArgVal("model_dir",        arg, &FLAG_modelDir)    ||
@@ -224,6 +229,10 @@ static bool HasOneOfTheseSuffixes(const char *str, ...) {
 
 static bool IsImageFile(const char *str) {
   return HasOneOfTheseSuffixes(str, ".bmp", ".jpg", ".jpeg", ".png", nullptr);
+}
+
+static bool IsLossyImageFile(const char *str) {
+  return HasOneOfTheseSuffixes(str, ".jpg", ".jpeg", nullptr);
 }
 
 static const char* DurationString(double sc) {
@@ -488,7 +497,7 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_arEff, NVVFX_INPUT_IMAGE,  &_srcGpuBuf));
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_arEff, NVVFX_OUTPUT_IMAGE, &_interGpuBGRf32pl));
   BAIL_IF_ERR(vfxErr = NvVFX_SetCudaStream(_arEff, NVVFX_CUDA_STREAM, stream));
-  BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_arEff, NVVFX_STRENGTH, FLAG_arStrength));
+  BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_arEff, NVVFX_MODE, FLAG_arMode));
 
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_upscaleEff, NVVFX_INPUT_IMAGE, &_interGpuRGBAu8));
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_upscaleEff, NVVFX_OUTPUT_IMAGE, &_dstGpuBuf));
@@ -503,6 +512,8 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
   BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_dstGpuBuf, &_dstVFX, 1.f, stream, &_tmpVFX)); // _dstGpuBuf --> _dstTmpVFX --> _dstVFX
 
   if (outFile && outFile[0]) {
+    if(IsLossyImageFile(outFile))
+      fprintf(stderr, "WARNING: JPEG output file format will reduce image quality\n");
     if (!cv::imwrite(outFile, _dstImg)) {
       printf("Error writing: \"%s\"\n", outFile);
       return errWrite;
@@ -552,7 +563,7 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_arEff, NVVFX_INPUT_IMAGE,  &_srcGpuBuf));
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_arEff, NVVFX_OUTPUT_IMAGE, &_interGpuBGRf32pl));
   BAIL_IF_ERR(vfxErr = NvVFX_SetCudaStream(_arEff, NVVFX_CUDA_STREAM, stream));
-  BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_arEff, NVVFX_STRENGTH, FLAG_arStrength));
+  BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_arEff, NVVFX_MODE, FLAG_arMode));
   BAIL_IF_ERR(vfxErr = NvVFX_Load(_arEff));
 
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_upscaleEff, NVVFX_INPUT_IMAGE, &_interGpuRGBAu8));

@@ -27,9 +27,11 @@ The SDK provides several sample applications that demonstrate the features liste
 - **DenoiseEffect App**, which is a sample app that demonstrates the webcam denoising feature.
  
 The input and output resolutions supported by the features of the SDK are listed below.
-- The Super Resolution and Encoder Artifact Reduction features support between 90p to 1080p as input resolutions. 
+- The Encoder Artifact Reduction feature supports between 90p to 1080p as input resolutions. 
+- The Super Resolution feature supports between 90p to 2160p as input resolutions.
    - Super Resolution supports the following scaling factors: 4/3x (~1.33x), 1.5x, 2x, 3x and 4x.
-   - The maximum output resolution for the Super Resolution feature is 2160p.
+   - 2160p input is only supported for the following scaling factors: 4/3x (~1.33x), 1.5x and 2x
+   - The maximum output resolution for the Super Resolution feature is 4320p.
 - The Upscale feature supports any input resolution, and the following scaling factors: 4/3x (~1.33x), 1.5x, 2x, 3x  and 4x.
 - The Webcam Denoising feature supports between 80p to 1080p as input resolutions.
 - The AI Green Screen and Background Blur features require that an input image/video be at least 288 pixels high.
@@ -37,17 +39,17 @@ The input and output resolutions supported by the features of the SDK are listed
 NVIDIA MAXINE VideoEffects SDK is distributed in the following parts:
 
 - This open source repository that includes the [SDK API and proxy linking source code](https://github.com/NVIDIA/MAXINE-VFX-SDK/tree/master/nvvfx), and [sample applications and their dependency libraries](https://github.com/NVIDIA/MAXINE-VFX-SDK/tree/master/samples).
-- An installer hosted on [NVIDIA Maxine developer page](https://www.nvidia.com/broadcast-sdk-resources) that installs the SDK DLLs, the models, and the SDK dependency libraries.
+- An installer hosted on [NVIDIA Maxine End-user Redistributables page](https://www.nvidia.com/broadcast-sdk-resources) that installs the SDK DLLs, the models, and the SDK dependency libraries.
 
-Please refer to [SDK programming guide](https://github.com/NVIDIA/MAXINE-VFX-SDK/blob/master/docs/NVIDIA%20Video%20Effects%20SDK%20Programming%20Guide.pdf) for configuring and integrating the SDK, compiling and running the sample applications. Please visit the [NVIDIA MAXINE Video Effects SDK](https://developer.nvidia.com/maxine-getting-started) webpage for more information about the SDK.
+Please refer to the [SDK System guide](https://docs.nvidia.com/deeplearning/maxine/vfx-sdk-system-guide/) for configuring and integrating the SDK, compiling and running the sample applications. Please visit the [NVIDIA MAXINE Video Effects SDK](https://developer.nvidia.com/maxine-getting-started) webpage for more information about the SDK.
 
 ## System requirements
 The SDK is supported on NVIDIA GPUs that are based on the NVIDIA® Turing™ or Ampere™ architecture and have Tensor Cores.
 
-* Windows OS supported: 64-bit Windows 10
+* Windows OS supported: 64-bit Windows 10 or later
 * Microsoft Visual Studio: 2017 (MSVC15.0) or later
 * CMake: v3.12 or later
-* NVIDIA Graphics Driver for Windows: 455.57 or later
+* NVIDIA Graphics Driver for Windows: 465.89 or later
 
 ## NVIDIA MAXINE Branding Guidelines
 If you integrate an NVIDIA MAXINE SDK within your product, please follow the required branding guidelines that are available [here](https://www.nvidia.com/maxine-sdk-guidelines/)
@@ -73,3 +75,14 @@ The open source repository includes the source code to build the sample applicat
 3.  Use Visual Studio to generate the application binary .exe file from the NvVideoEffects_SDK.sln file.
 *	In CMake, to open Visual Studio, click Open Project.
 *	In Visual Studio, select Build > Build Solution.
+
+## Documentation
+Please refer to the online documentation guides -
+* [NVIDIA Video Effects SDK Programming Guide](https://docs.nvidia.com/deeplearning/maxine/vfx-sdk-programming-guide/index.html)
+* [NVIDIA Video Effects SDK System Guide](https://docs.nvidia.com/deeplearning/maxine/vfx-sdk-system-guide/index.html)
+* [NvCVImage API Guide](https://docs.nvidia.com/deeplearning/maxine/nvcvimage-api-guide/index.html)
+
+PDF versions of these guides are also available at the following locations - 
+* [NVIDIA Video Effects SDK Programming Guide](https://docs.nvidia.com/deeplearning/maxine/pdf/vfx-sdk-programming-guide.pdf)
+* [NVIDIA Video Effects SDK System Guide](https://docs.nvidia.com/deeplearning/maxine/pdf/vfx-sdk-system-guide.pdf)
+* [NvCVImage API Guide](https://docs.nvidia.com/deeplearning/maxine/pdf/nvcvimage-api-guide.pdf)

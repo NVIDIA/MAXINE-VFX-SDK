@@ -1,3 +1,6 @@
+#if defined(linux) || defined(unix) || defined(__linux)
+#warning nvVideoEffectsProxy.cpp not ported
+#else // _WIN32_
 /*###############################################################################
 #
 # Copyright (c) 2020 NVIDIA Corporation
@@ -37,9 +40,9 @@
 
 // Parameter string does not include the file extension
 #ifdef _WIN32
-#define nvLoadLibrary(library) LoadLibrary(TEXT(library ".dll"))
+  #define nvLoadLibrary(library) LoadLibrary(TEXT(library ".dll"))
 #else // !_WIN32
-#define nvLoadLibrary(library) dlopen("lib" library ".so", RTLD_LAZY)
+  #define nvLoadLibrary(library) dlopen("lib" library ".so", RTLD_LAZY)
 #endif // _WIN32
 
 
@@ -55,27 +58,44 @@ inline void* nvGetProcAddress(HINSTANCE handle, const char* proc) {
 inline int nvFreeLibrary(HINSTANCE handle) {
 #ifdef _WIN32
   return FreeLibrary(handle);
-#else
+#else // !_WIN32
   return dlclose(handle);
-#endif
+#endif // _WIN32
 }
 
 HINSTANCE getNvVfxLib() {
 
   TCHAR path[MAX_PATH], fullPath[MAX_PATH];
+  bool bSDKPathSet = false;
 
-  // There can be multiple apps on the system,
-  // some might include the SDK in the app package and
-  // others might expect the SDK to be installed in Program Files
-  GetEnvironmentVariable(TEXT("NV_VIDEO_EFFECTS_PATH"), path, MAX_PATH);
-  if (_tcscmp(path, TEXT("USE_APP_PATH"))) {
-    // App has not set environment variable to "USE_APP_PATH"
-    // So pick up the SDK dll and dependencies from Program Files
-    GetEnvironmentVariable(TEXT("ProgramFiles"), path, MAX_PATH);
-    size_t max_len = sizeof(fullPath)/sizeof(TCHAR);
-    _stprintf_s(fullPath, max_len, TEXT("%s\\NVIDIA Corporation\\NVIDIA Video Effects\\"), path);
+  extern char* g_nvVFXSDKPath;
+  if (g_nvVFXSDKPath && g_nvVFXSDKPath[0]) {
+#ifndef UNICODE
+    strncpy_s(fullPath, MAX_PATH, g_nvVFXSDKPath, MAX_PATH);
+    
+#else // !UNICODE
+    size_t res = 0;
+    mbstowcs_s(&res, fullPath, MAX_PATH, g_nvVFXSDKPath, MAX_PATH);
+#endif // UNICODE
     SetDllDirectory(fullPath);
+    bSDKPathSet = true;
   }
+
+  if (!bSDKPathSet) {
+    // There can be multiple apps on the system,
+    // some might include the SDK in the app package and
+    // others might expect the SDK to be installed in Program Files
+    GetEnvironmentVariable(TEXT("NV_VIDEO_EFFECTS_PATH"), path, MAX_PATH);
+    if (_tcscmp(path, TEXT("USE_APP_PATH"))) {
+      // App has not set environment variable to "USE_APP_PATH"
+      // So pick up the SDK dll and dependencies from Program Files
+      GetEnvironmentVariable(TEXT("ProgramFiles"), path, MAX_PATH);
+      size_t max_len = sizeof(fullPath) / sizeof(TCHAR);
+      _stprintf_s(fullPath, max_len, TEXT("%s\\NVIDIA Corporation\\NVIDIA Video Effects\\"), path);
+      SetDllDirectory(fullPath);
+    }
+  }
+  
   static const HINSTANCE NvVfxLib = nvLoadLibrary("NVVideoEffects");
   return NvVfxLib;
 }
@@ -256,3 +276,4 @@ NvCV_Status NvVFX_API NvVFX_CudaStreamDestroy(CUstream stream) {
   return funcPtr(stream);
 }
 
+#endif // enabling for this file

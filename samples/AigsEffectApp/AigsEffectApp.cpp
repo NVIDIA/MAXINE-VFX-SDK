@@ -63,9 +63,9 @@
 
 bool        FLAG_progress = false;
 bool        FLAG_show     = false;
-bool        FLAG_useOTAU  = false;
 bool        FLAG_verbose  = false;
 bool        FLAG_webcam   = false;
+bool        FLAG_cudaGraph = false;
 int         FLAG_compMode = 3 /*compWhite*/;
 int         FLAG_mode     = 0;
 float       FLAG_blurStrength = 0.5;
@@ -75,6 +75,7 @@ std::string FLAG_inFile;
 std::string FLAG_modelDir;
 std::string FLAG_outDir;
 std::string FLAG_outFile;
+std::string FLAG_bgFile;
 
 static bool GetFlagArgVal(const char *flag, const char *arg, const char **val) {
   if (*arg != '-') return false;
@@ -135,6 +136,7 @@ static void Usage() {
       "  where args is:\n"
       "  --in_file=<path>           input file to be processed\n"
       "  --out_file=<path>          output file to be written\n"
+      "  --bg_file=<path>           background file for composition\n"
       "  --webcam                   use a webcam as input\n"
       "  --cam_res=[WWWx]HHH        specify resolution as height or width x height\n"
       "  --model_dir=<path>         the path to the directory that contains the models\n"
@@ -144,8 +146,15 @@ static void Usage() {
       "  --mode=(0|1)               pick one of the green screen modes\n"
       "                             0 - Best quality\n"
       "                             1 - Best performance\n"
-      "  --comp_mode                choose the composition mode - { compMatte = 0, compLight = 1, compGreen = 2, compWhite = 3, compNone = 4, compBG = 5, compBlur = 6}\n"
-      "  --blur_strength            change the blur strength, range is [0, 1]"
+      "  --comp_mode                choose the composition mode - {\n"
+      "                               0 (show matte - compMatte),\n"
+      "                               1 (overlay mask on foreground - compLight),\n"
+      "                               2 (composite over green - compGreen),\n"
+      "                               3 (composite over white - compWhite),\n"
+      "                               4 (show input - compNone),\n"
+      "                               5 (composite over a specified background image - compBG),\n"
+      "                               6 (blur the background of the image - compBlur) }\n"
+      "  --cuda_graph               Enable cuda graph.\n"
   );
 }
 
@@ -160,10 +169,12 @@ static int ParseMyArgs(int argc, char **argv) {
                (GetFlagArgVal("verbose", arg, &FLAG_verbose) || GetFlagArgVal("in", arg, &FLAG_inFile) ||
                 GetFlagArgVal("in_file", arg, &FLAG_inFile) || GetFlagArgVal("out", arg, &FLAG_outFile) ||
                 GetFlagArgVal("out_file", arg, &FLAG_outFile) || GetFlagArgVal("model_dir", arg, &FLAG_modelDir) ||
+                GetFlagArgVal("bg_file", arg, &FLAG_bgFile) ||
                 GetFlagArgVal("codec", arg, &FLAG_codec) || GetFlagArgVal("webcam", arg, &FLAG_webcam) ||
                 GetFlagArgVal("cam_res", arg, &FLAG_camRes) || GetFlagArgVal("mode", arg, &FLAG_mode) ||
                 GetFlagArgVal("progress", arg, &FLAG_progress) || GetFlagArgVal("show", arg, &FLAG_show) ||
-                GetFlagArgVal("comp_mode", arg, &FLAG_compMode) || GetFlagArgVal("blur_strength", arg, &FLAG_blurStrength))) {
+                GetFlagArgVal("comp_mode", arg, &FLAG_compMode) || GetFlagArgVal("blur_strength", arg, &FLAG_blurStrength) ||
+                GetFlagArgVal("cuda_graph", arg, &FLAG_cudaGraph) )) {
       continue;
     } else if (GetFlagArgVal("help", arg, &help)) {
       return NVCV_ERR_HELP;
@@ -208,6 +219,10 @@ static bool IsImageFile(const char *str) {
   return HasOneOfTheseSuffixes(str, ".bmp", ".jpg", ".jpeg", ".png", nullptr);
 }
 
+static bool IsLossyImageFile(const char *str) {
+  return HasOneOfTheseSuffixes(str, ".jpg", ".jpeg", nullptr);
+}
+
 static const char *DurationString(double sc) {
   static char buf[16];
   int hr, mn;
@@ -246,9 +261,9 @@ static void GetVideoInfo(cv::VideoCapture &reader, const char *fileName, VideoIn
   info->height = (int)reader.get(cv::CAP_PROP_FRAME_HEIGHT);
   info->frameRate = (double)reader.get(cv::CAP_PROP_FPS);
   if(!strcmp(fileName,"webcam"))
-    info->frameCount = 0;
+      info->frameCount = 0;
   else
-    info->frameCount = (long long)reader.get(cv::CAP_PROP_FRAME_COUNT);
+      info->frameCount = (long long)reader.get(cv::CAP_PROP_FRAME_COUNT);
   if (FLAG_verbose) PrintVideoInfo(info, fileName);
 }
 
@@ -282,8 +297,8 @@ struct FXApp {
     errLibrary = NVCV_ERR_LIBRARY,
     errInitialization = NVCV_ERR_INITIALIZATION,
     errFileNotFound = NVCV_ERR_FILE,
-    errFeatureNotFound  = NVCV_ERR_FEATURENOTFOUND,
-    errMissingInput     = NVCV_ERR_MISSINGINPUT,
+    errFeatureNotFound = NVCV_ERR_FEATURENOTFOUND,
+    errMissingInput = NVCV_ERR_MISSINGINPUT,
     errResolution = NVCV_ERR_RESOLUTION,
     errUnsupportedGPU = NVCV_ERR_UNSUPPORTEDGPU,
     errWrongGPU = NVCV_ERR_WRONGGPU,
@@ -341,6 +356,8 @@ struct FXApp {
   NvVFX_Handle _eff, _bgblurEff;
   cv::Mat _srcImg;
   cv::Mat _dstImg;
+  cv::Mat _bgImg;
+  cv::Mat _resizedCroppedBgImg;
   NvCVImage _srcVFX;
   NvCVImage _dstVFX;
   bool _show;
@@ -401,24 +418,26 @@ void FXApp::drawFrameRate(cv::Mat &img) {
 void FXApp::nextCompMode() {
   switch (_compMode) {
     default:
-    case compBG:
+    case compMatte:
+      _compMode = compLight;
+      break;
     case compLight:
       _compMode = compGreen;
-      break;
-    case compMatte:
-      _compMode = compNone;
       break;
     case compGreen:
       _compMode = compWhite;
       break;
     case compWhite:
-      _compMode = compMatte;
+      _compMode = compNone;
       break;
     case compNone:
+      _compMode = compBG;
+      break;
+    case compBG:
       _compMode = compBlur;
       break;
     case compBlur:
-      _compMode = compLight;
+      _compMode = compMatte;
       break;
   }
 }
@@ -473,7 +492,7 @@ NvCV_Status FXApp::createAigsEffect() {
 
   if (!FLAG_modelDir.empty()) {
     vfxErr = NvVFX_SetString(_eff, NVVFX_MODEL_DIRECTORY, FLAG_modelDir.c_str());
-  }
+  } 
   if (vfxErr != NVCV_SUCCESS) {
     std::cerr << "Error setting the model path to \"" << FLAG_modelDir << "\"\n";
     return vfxErr;
@@ -490,6 +509,12 @@ NvCV_Status FXApp::createAigsEffect() {
   vfxErr = NvVFX_SetU32(_eff, NVVFX_MODE, FLAG_mode);
   if (vfxErr != NVCV_SUCCESS) {
     std::cerr << "Error setting the mode \n";
+    return vfxErr;
+  }
+
+  vfxErr = NvVFX_SetU32(_eff, NVVFX_CUDA_GRAPH, FLAG_cudaGraph?1u:0u);
+  if (vfxErr != NVCV_SUCCESS) {
+    std::cerr << "Error enabling cuda graph \n";
     return vfxErr;
   }
 
@@ -570,6 +595,8 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
 
   overlay(_srcImg, _dstImg, 0.5, result);
   if (!std::string(outFile).empty()) {
+    if(IsLossyImageFile(outFile))
+      fprintf(stderr, "WARNING: JPEG output file format will reduce image quality\n");
     ok = cv::imwrite(outFile, result);
     if (!ok) {
       printf("Error writing: \"%s\"\n", outFile);
@@ -647,6 +674,30 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
   unsigned int width = (unsigned int)reader.get(cv::CAP_PROP_FRAME_WIDTH);
   unsigned int height = (unsigned int)reader.get(cv::CAP_PROP_FRAME_HEIGHT);
 
+  if (!FLAG_bgFile.empty())
+  {
+    _bgImg = cv::imread(FLAG_bgFile);
+      if (!_bgImg.data)
+      {
+        return errRead;
+      }
+      else
+      {
+        // Find the scale to resize background such that image can fit into background
+        float scale = float(height) / float(_bgImg.rows);
+        if ((scale * _bgImg.cols) < float(width))
+        {
+          scale = float(width) / float(_bgImg.cols);
+        }
+        cv::Mat resizedBg;
+        cv::resize(_bgImg, resizedBg, cv::Size(), scale, scale, cv::INTER_AREA);
+
+        // Always crop from top left of background.
+        cv::Rect rect(0, 0, width, height);
+        _resizedCroppedBgImg = resizedBg(rect);
+      }
+  }
+
   // allocate src for GPU
   if (!_srcNvVFXImage.pixels)
     BAIL_IF_ERR(vfxErr =
@@ -695,6 +746,25 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
       case compNone:
         _srcImg.copyTo(result);
         break;
+      case compBG: {
+        if (FLAG_bgFile.empty())
+        {
+          _resizedCroppedBgImg = cv::Mat(_srcImg.rows, _srcImg.cols, CV_8UC3, cv::Scalar(118, 185, 0));
+          size_t startX = _resizedCroppedBgImg.cols/20;
+          size_t offsetY = _resizedCroppedBgImg.rows/20;
+          std::string text = "No Background Image!";
+          for (size_t startY = offsetY; startY < _resizedCroppedBgImg.rows; startY += offsetY)
+          {
+            cv::putText(_resizedCroppedBgImg, text, cv::Point(startX, startY),
+                cv::FONT_HERSHEY_DUPLEX, 1.0, CV_RGB(0, 0, 0), 1);
+          }
+        }
+        NvCVImage bgVFX;
+        (void)NVWrapperForCVMat(&_resizedCroppedBgImg, &bgVFX);
+        NvCVImage matVFX;
+        (void)NVWrapperForCVMat(&result, &matVFX);
+        NvCVImage_Composite(&_srcVFX, &bgVFX, &_dstVFX, &matVFX, _stream);
+      } break;
       case compLight:
         if (inFile) {
           overlay(_srcImg, _dstImg, 0.5, result);
@@ -708,13 +778,13 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
         const unsigned char bgColor[3] = {0, 255, 0};
         NvCVImage matVFX;
         (void)NVWrapperForCVMat(&result, &matVFX);
-        NvCVImage_CompositeOverConstant(&_srcVFX, &_dstVFX, bgColor, &matVFX);
+        NvCVImage_CompositeOverConstant(&_srcVFX, &_dstVFX, bgColor, &matVFX, _stream);
       } break;
       case compWhite: {
         const unsigned char bgColor[3] = {255, 255, 255};
         NvCVImage matVFX;
         (void)NVWrapperForCVMat(&result, &matVFX);
-        NvCVImage_CompositeOverConstant(&_srcVFX, &_dstVFX, bgColor, &matVFX);
+        NvCVImage_CompositeOverConstant(&_srcVFX, &_dstVFX, bgColor, &matVFX, _stream);
       } break;
       case compMatte:
         cv::cvtColor(_dstImg, result, cv::COLOR_GRAY2BGR);
@@ -726,7 +796,7 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
         BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_bgblurEff, NVVFX_OUTPUT_IMAGE, &_blurNvVFXImage));
         BAIL_IF_ERR(vfxErr = NvVFX_Load(_bgblurEff));
         BAIL_IF_ERR(vfxErr = NvVFX_Run(_bgblurEff, 0));
-        
+
         NvCVImage matVFX;
         (void)NVWrapperForCVMat(&result, &matVFX);
         BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_blurNvVFXImage, &matVFX, 1.0f, _stream, NULL));
@@ -750,12 +820,11 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
         if (errQuit == appErr) break;
       }
     }
-    if (_progress) {
-      if(info.frameCount == 0)  // no progress for a webcam
-        fprintf(stderr, "\b\b\b\b???%%");
-      else
-        fprintf(stderr, "\b\b\b\b%3.0f%%", 100.f * frameNum / info.frameCount);
-    }
+    if (_progress)
+        if(info.frameCount == 0)  // no progress for a webcam
+            fprintf(stderr, "\b\b\b\b???%%");
+        else
+            fprintf(stderr, "\b\b\b\b%3.0f%%", 100.f * frameNum / info.frameCount);
   }
 
   if (_progress) fprintf(stderr, "\n");
@@ -769,16 +838,43 @@ bail:
   return appErrFromVfxStatus(vfxErr);
 }
 
+// This path is used by nvVideoEffectsProxy.cpp to load the SDK dll
+char *g_nvVFXSDKPath = NULL;
+
+int chooseGPU() {
+  // If the system has multiple supported GPUs then the application
+  // should use CUDA driver APIs or CUDA runtime APIs to enumerate
+  // the GPUs and select one based on the application's requirements
+
+  // Cuda device 0
+  return 0;
+}
+
+bool isCompModeEnumValid(const FXApp::CompMode& mode)
+{
+  if (mode != FXApp::CompMode::compMatte &&
+      mode != FXApp::CompMode::compLight &&
+      mode != FXApp::CompMode::compGreen &&
+      mode != FXApp::CompMode::compWhite &&
+      mode != FXApp::CompMode::compNone  &&
+      mode != FXApp::CompMode::compBG    &&
+      mode != FXApp::CompMode::compBlur)
+    {
+      return false;
+    }
+    return true;
+}
+
 int main(int argc, char **argv) {
   int nErrs = 0;
-  FXApp::Err fxErr = FXApp::errNone;
-  FXApp app;
-
   nErrs = ParseMyArgs(argc, argv);
   if (nErrs) {
     Usage();
     return nErrs;
   }
+
+  FXApp::Err fxErr = FXApp::errNone;
+  FXApp app; 
 
   if (FLAG_inFile.empty() && !FLAG_webcam) {
     std::cerr << "Please specify --in_file=XXX or --webcam\n";
@@ -793,6 +889,12 @@ int main(int argc, char **argv) {
   app.setShow(FLAG_show);
 
   app._compMode = static_cast<FXApp::CompMode>(FLAG_compMode);
+  if (!isCompModeEnumValid(app._compMode))
+  {
+    std::cerr << "Please specify a valid --comp_mode=XXX, valid range is [0,6] check help section\n";
+    ++nErrs;
+  }
+
   app._blurStrength = FLAG_blurStrength;
   if (app._blurStrength < 0) {
     app._blurStrength = 0;

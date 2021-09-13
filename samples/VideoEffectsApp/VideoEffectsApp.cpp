@@ -57,6 +57,7 @@ bool        FLAG_debug          = false,
             FLAG_progress       = false,
             FLAG_webcam         = false;
 float       FLAG_strength       = 0.f;
+int         FLAG_mode = 0;
 int         FLAG_resolution     = 0;
 std::string FLAG_codec          = DEFAULT_CODEC,
             FLAG_camRes         = "1280x720",
@@ -65,6 +66,11 @@ std::string FLAG_codec          = DEFAULT_CODEC,
             FLAG_outDir,
             FLAG_modelDir,
             FLAG_effect;
+
+// Set this when using OTA Updates
+// This path is used by nvVideoEffectsProxy.cpp to load the SDK dll
+// when using  OTA Updates
+char *g_nvVFXSDKPath = NULL;
 
 static bool GetFlagArgVal(const char *flag, const char *arg, const char **val) {
   if (*arg != '-')
@@ -140,8 +146,9 @@ static void Usage() {
     "  --out_file=<path>          output file to be written\n"
     "  --effect=<effect>          the effect to apply\n"
     "  --show                     display the results in a window (for webcam, it is always true)\n"
-    "  --strength=<value>         strength of an effect, 0 or 1 for super res and artifact reduction,\n"
-    "                             and [0.0, 1.0] for upscaling\n"
+    "  --strength=<value>         strength of the upscaling effect, [0.0, 1.0]\n"
+    "  --mode=<value>             mode of the super res or artifact reduction effect, 0 or 1, \n"
+    "                             where 0 - conservative and 1 - aggressive\n"
     "  --cam_res=[WWWx]HHH        specify camera resolution as height or width x height\n"
     "                             supports 720 and 1080 resolutions (default \"720\") \n"
     "  --resolution=<height>      the desired height of the output\n"
@@ -176,6 +183,7 @@ static int ParseMyArgs(int argc, char **argv) {
         GetFlagArgVal("webcam",       arg, &FLAG_webcam)      ||
         GetFlagArgVal("cam_res",      arg, &FLAG_camRes)      ||
         GetFlagArgVal("strength",     arg, &FLAG_strength)    ||
+        GetFlagArgVal("mode",         arg, &FLAG_mode)        ||
         GetFlagArgVal("resolution",   arg, &FLAG_resolution)  ||
         GetFlagArgVal("model_dir",    arg, &FLAG_modelDir)    ||
         GetFlagArgVal("codec",        arg, &FLAG_codec)       ||
@@ -227,6 +235,11 @@ static bool HasOneOfTheseSuffixes(const char *str, ...) {
 static bool IsImageFile(const char *str) {
   return HasOneOfTheseSuffixes(str, ".bmp", ".jpg", ".jpeg", ".png", nullptr);
 }
+
+static bool IsLossyImageFile(const char *str) {
+  return HasOneOfTheseSuffixes(str, ".jpg", ".jpeg", nullptr);
+}
+
 
 static const char* DurationString(double sc) {
   static char buf[16];
@@ -561,9 +574,9 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_OUTPUT_IMAGE, &_dstGpuBuf));
   BAIL_IF_ERR(vfxErr = NvVFX_SetCudaStream(_eff, NVVFX_CUDA_STREAM, stream));
   if (!strcmp(_effectName, NVVFX_FX_ARTIFACT_REDUCTION)) {
-    BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned int)FLAG_strength));
+    BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_MODE, (unsigned int)FLAG_mode));
   } else if (!strcmp(_effectName, NVVFX_FX_SUPER_RES)) {
-    BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned int)FLAG_strength));
+    BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_MODE, (unsigned int)FLAG_mode));
   }
 
   BAIL_IF_ERR(vfxErr = NvVFX_Load(_eff));
@@ -571,6 +584,8 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
   BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_dstGpuBuf, &_dstVFX, 255.f, stream, &_tmpVFX));   // _dstGpuBuf --> _tmpVFX --> _dstVFX
 
   if (outFile && outFile[0]) {
+    if(IsLossyImageFile(outFile))
+      fprintf(stderr, "WARNING: JPEG output file format will reduce image quality\n");
     if (!cv::imwrite(outFile, _dstImg)) {
       printf("Error writing: \"%s\"\n", outFile);
       return errWrite;
@@ -632,9 +647,9 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_OUTPUT_IMAGE, &_dstGpuBuf));
   BAIL_IF_ERR(vfxErr = NvVFX_SetCudaStream(_eff, NVVFX_CUDA_STREAM, stream));
   if (!strcmp(_effectName, NVVFX_FX_ARTIFACT_REDUCTION)) {
-    BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned int)FLAG_strength));
+    BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_MODE, (unsigned int)FLAG_mode));
   } else if (!strcmp(_effectName, NVVFX_FX_SUPER_RES)) {
-    BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned int)FLAG_strength));
+    BAIL_IF_ERR(vfxErr = NvVFX_SetU32(_eff, NVVFX_MODE, (unsigned int)FLAG_mode));
   }
   BAIL_IF_ERR(vfxErr = NvVFX_Load(_eff));
 

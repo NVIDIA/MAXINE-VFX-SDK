@@ -86,7 +86,7 @@
  * \endcode
  *
  * where ::cudaChannelFormatKind is one of ::cudaChannelFormatKindSigned,
- * ::cudaChannelFormatKindUnsigned, or ::cudaChannelFormatKindFloat.
+ * ::cudaChannelFormatKindUnsigned, cudaChannelFormatKindFloat or ::cudaChannelFormatKindNV12.
  *
  * \return
  * Channel descriptor with format \p f
@@ -401,6 +401,12 @@ template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<float
   return cudaCreateChannelDesc(e, e, e, e, cudaChannelFormatKindFloat);
 }
 
+static __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDescNV12(void)
+{
+    int e = (int)sizeof(char) * 8;
+
+    return cudaCreateChannelDesc(e, e, e, 0, cudaChannelFormatKindNV12);
+}
 #endif /* __cplusplus */
 
 /** @} */

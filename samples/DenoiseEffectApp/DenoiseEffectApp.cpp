@@ -220,6 +220,10 @@ static bool IsImageFile(const char *str) {
   return HasOneOfTheseSuffixes(str, ".bmp", ".jpg", ".jpeg", ".png", nullptr);
 }
 
+static bool IsLossyImageFile(const char *str) {
+  return HasOneOfTheseSuffixes(str, ".jpg", ".jpeg", nullptr);
+}
+
 static const char* DurationString(double sc) {
   static char buf[16];
   int         hr, mn;
@@ -388,7 +392,7 @@ FXApp::Err FXApp::processKey(int key) {
   case 'p': case 'P': case '%':
     _progress = !_progress;
   case 'e': case 'E':
-      _enableEffect = !_enableEffect; 
+      _enableEffect = !_enableEffect;
     break;
   case 'd': case'D':
     if (FLAG_webcam)
@@ -474,10 +478,10 @@ NvCV_Status FXApp::allocBuffers(unsigned width, unsigned height) {
     _srcImg.create(height, width, CV_8UC3);                                                                                        // src CPU
     BAIL_IF_NULL(_srcImg.data, vfxErr, NVCV_ERR_MEMORY);
   }
-  
+
   _dstImg.create(_srcImg.rows, _srcImg.cols, _srcImg.type()); // 
   BAIL_IF_NULL(_dstImg.data, vfxErr, NVCV_ERR_MEMORY); // 
-  BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_srcGpuBuf, _srcImg.cols, _srcImg.rows, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_GPU, 1));  // src GPU 
+  BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_srcGpuBuf, _srcImg.cols, _srcImg.rows, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_GPU, 1));  // src GPU
   BAIL_IF_ERR(vfxErr = NvCVImage_Alloc(&_dstGpuBuf, _srcImg.cols, _srcImg.rows, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_GPU, 1)); //dst GPU
 
   NVWrapperForCVMat(&_srcImg, &_srcVFX);      // _srcVFX is an alias for _srcImg
@@ -510,9 +514,9 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
   BAIL_IF_ERR(vfxErr = allocBuffers(_srcImg.cols, _srcImg.rows));
   BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_srcVFX, &_srcGpuBuf, 1.f / 255.f, stream, &_tmpVFX)); // _srcVFX--> _tmpVFX --> _srcGpuBuf
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_INPUT_IMAGE, &_srcGpuBuf));
-  BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_OUTPUT_IMAGE, &_dstGpuBuf)); 
+  BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_OUTPUT_IMAGE, &_dstGpuBuf));
   BAIL_IF_ERR(vfxErr = NvVFX_SetF32(_eff, NVVFX_STRENGTH, FLAG_strength));
-  
+
   unsigned int stateSizeInBytes;
   BAIL_IF_ERR(vfxErr = NvVFX_GetU32(_eff, NVVFX_STATE_SIZE, &stateSizeInBytes));
   cudaMalloc(&state, stateSizeInBytes);
@@ -525,6 +529,8 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
   BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_dstGpuBuf, &_dstVFX, 255.f, stream, &_tmpVFX));
 
   if (outFile && outFile[0]) {
+    if(IsLossyImageFile(outFile))
+      fprintf(stderr, "WARNING: JPEG output file format will reduce image quality\n");
     if (!cv::imwrite(outFile, _dstImg)) {
       printf("Error writing: \"%s\"\n", outFile);
       return errWrite;
@@ -552,7 +558,7 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
 
   void* state = nullptr;
   void* stateArray[1];
- 
+
   if (inFile && !inFile[0]) inFile = nullptr;  // Set file paths to NULL if zero length
 
   if (!FLAG_webcam && inFile) {
@@ -574,7 +580,7 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
     printf("Filters only target H264 videos, not %.4s\n", (char*)&info.codec);
 
   BAIL_IF_ERR(vfxErr = allocBuffers(info.width, info.height));
-  
+
   if (outFile && !outFile[0]) outFile = nullptr;
   if (outFile) {
     ok = writer.open(outFile, StringToFourcc(FLAG_codec), info.frameRate, cv::Size(_dstVFX.width, _dstVFX.height));
@@ -586,7 +592,7 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
     }
   }
 
-  BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_INPUT_IMAGE,  &_srcGpuBuf)); 
+  BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_INPUT_IMAGE,  &_srcGpuBuf));
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_OUTPUT_IMAGE, &_dstGpuBuf));
   BAIL_IF_ERR(vfxErr = NvVFX_SetF32(_eff, NVVFX_STRENGTH, FLAG_strength));
 
@@ -598,7 +604,7 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
   BAIL_IF_ERR(vfxErr = NvVFX_SetObject(_eff, NVVFX_STATE, (void*)stateArray));
 
   BAIL_IF_ERR(vfxErr = NvVFX_Load(_eff));
-  
+
   for (frameNum = 0; reader.read(_srcImg); frameNum++) {
     if (_enableEffect) {
       BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_srcVFX, &_srcGpuBuf, 1.f / 255.f, stream, &_tmpVFX));
@@ -613,7 +619,7 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
       writer.write(_dstImg);
 
     if (_show) {
-      if (_drawVisualization)  drawEffectStatus(_dstImg); 
+      if (_drawVisualization)  drawEffectStatus(_dstImg);
       drawFrameRate(_dstImg);
       cv::imshow("Output", _dstImg);
       int key= cv::waitKey(1);
@@ -630,7 +636,7 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
   if (_progress) fprintf(stderr, "\n");
   reader.release();
   if (outFile)
-    writer.release(); 
+    writer.release();
 bail:
   if (state)  cudaFree(state); // release state memory
   return appErrFromVfxStatus(vfxErr);

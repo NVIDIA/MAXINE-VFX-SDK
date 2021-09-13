@@ -1,5 +1,5 @@
 /*
- * Copyright 1993-2018 NVIDIA Corporation.  All rights reserved.
+ * Copyright 1993-2021 NVIDIA Corporation.  All rights reserved.
  *
  * NOTICE TO LICENSEE:
  *
@@ -66,43 +66,37 @@ extern "C" {
 
 struct cudaFuncAttributes;
 
-#if defined(_WIN32)
-#define __NV_WEAK__ __declspec(nv_weak)
-#else
-#define __NV_WEAK__ __attribute__((nv_weak))
-#endif
 
-__device__ __NV_WEAK__ cudaError_t CUDARTAPI cudaMalloc(void **p, size_t s) 
+inline __device__  cudaError_t CUDARTAPI cudaMalloc(void **p, size_t s) 
 { 
   return cudaErrorUnknown;
 }
 
-__device__ __NV_WEAK__ cudaError_t CUDARTAPI cudaFuncGetAttributes(struct cudaFuncAttributes *p, const void *c) 
+inline __device__  cudaError_t CUDARTAPI cudaFuncGetAttributes(struct cudaFuncAttributes *p, const void *c) 
 { 
   return cudaErrorUnknown;
 }
 
-__device__ __NV_WEAK__ cudaError_t CUDARTAPI cudaDeviceGetAttribute(int *value, enum cudaDeviceAttr attr, int device)
+inline __device__  cudaError_t CUDARTAPI cudaDeviceGetAttribute(int *value, enum cudaDeviceAttr attr, int device)
 {
   return cudaErrorUnknown;
 }
 
-__device__ __NV_WEAK__ cudaError_t CUDARTAPI cudaGetDevice(int *device)
+inline __device__  cudaError_t CUDARTAPI cudaGetDevice(int *device)
 {
   return cudaErrorUnknown;
 }
 
-__device__ __NV_WEAK__ cudaError_t CUDARTAPI cudaOccupancyMaxActiveBlocksPerMultiprocessor(int *numBlocks, const void *func, int blockSize, size_t dynamicSmemSize)
+inline __device__  cudaError_t CUDARTAPI cudaOccupancyMaxActiveBlocksPerMultiprocessor(int *numBlocks, const void *func, int blockSize, size_t dynamicSmemSize)
 {
   return cudaErrorUnknown;
 }
 
-__device__ __NV_WEAK__ cudaError_t CUDARTAPI cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(int *numBlocks, const void *func, int blockSize, size_t dynamicSmemSize, unsigned int flags)
+inline __device__  cudaError_t CUDARTAPI cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(int *numBlocks, const void *func, int blockSize, size_t dynamicSmemSize, unsigned int flags)
 {
   return cudaErrorUnknown;
 }
 
-#undef __NV_WEAK__
 
 #if defined(__cplusplus)
 }

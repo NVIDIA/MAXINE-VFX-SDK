@@ -21,6 +21,7 @@
 #
 ###############################################################################*/
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -127,8 +128,7 @@ static void Usage() {
     "  where flags is:\n"
     "  --out_file=<path>     output image files to be written, default \"BatchOut_%%02u.png\"\n"
     "  --effect=<effect>     the effect to apply\n"
-    "  --strength=<value>    strength of an effect, 0 or 1 for super res and artifact reduction,\n"
-    "                        and [0.0, 1.0] for upscaling\n"
+    "  --strength=<value>    strength of the upscaling effect, [0.0, 1.0]\n"
     "  --scale=<scale>       scale factor to be applied: 1.5, 2, 3, maybe 1.3333333\n"
     "  --resolution=<height> the desired height (either --scale or --resolution may be used)\n"
     "  --mode=<mode>         mode 0 or 1\n"
@@ -183,6 +183,32 @@ static int ParseMyArgs(int argc, char **argv) {
   return errs;
 }
 
+static bool HasSuffix(const char *str, const char *suf) {
+  size_t  strSize = strlen(str),
+    sufSize = strlen(suf);
+  if (strSize < sufSize)
+    return false;
+  return (0 == strcasecmp(suf, str + strSize - sufSize));
+}
+
+static bool HasOneOfTheseSuffixes(const char *str, ...) {
+  bool matches = false;
+  const char *suf;
+  va_list ap;
+  va_start(ap, str);
+  while (nullptr != (suf = va_arg(ap, const char*))) {
+    if (HasSuffix(str, suf)) {
+      matches = true;
+      break;
+    }
+  }
+  va_end(ap);
+  return matches;
+}
+
+static bool IsLossyImageFile(const char *str) {
+  return HasOneOfTheseSuffixes(str, ".jpg", ".jpeg", nullptr);
+}
 
 class App {
 public:
@@ -233,7 +259,7 @@ public:
       BAIL_IF_ERR(err = AllocateBatchBuffer(&_src, _batchSize, src->width, src->height, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_CUDA, 1));
       BAIL_IF_ERR(err = AllocateBatchBuffer(&_dst, _batchSize, src->width, src->height, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_CUDA, 1));
       BAIL_IF_ERR(err = NvVFX_SetString(_eff, NVVFX_MODEL_DIRECTORY, FLAG_modelDir.c_str()));
-      BAIL_IF_ERR(err = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned)FLAG_strength));
+      BAIL_IF_ERR(err = NvVFX_SetU32(_eff, NVVFX_MODE, FLAG_mode));
     }
 #endif // NVVFX_FX_ARTIFACT_REDUCTION
 #ifdef NVVFX_FX_SUPER_RES
@@ -241,7 +267,7 @@ public:
       BAIL_IF_ERR(err = AllocateBatchBuffer(&_src, _batchSize, src->width, src->height, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_CUDA, 1));
       BAIL_IF_ERR(err = AllocateBatchBuffer(&_dst, _batchSize, dw,         dh,          NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_CUDA, 1));
       BAIL_IF_ERR(err = NvVFX_SetString(_eff, NVVFX_MODEL_DIRECTORY, FLAG_modelDir.c_str()));
-      BAIL_IF_ERR(err = NvVFX_SetU32(_eff, NVVFX_STRENGTH, (unsigned)FLAG_strength));
+      BAIL_IF_ERR(err = NvVFX_SetU32(_eff, NVVFX_MODE, FLAG_mode));
     }
 #endif // NVVFX_FX_SUPER_RES
     else {
@@ -339,6 +365,8 @@ NvCV_Status BatchProcessImages(const char* effectName, const std::vector<const c
   dstHeight = app._dst.height / batchSize;
   BAIL_IF_ERR(err = NvCVImage_Alloc(&nvx, app._dst.width, dstHeight, ((app._dst.numComponents == 1) ? NVCV_Y : NVCV_BGR), NVCV_U8, NVCV_CHUNKY, NVCV_CPU, 0));
   CVWrapperForNvCVImage(&nvx, &ocv);
+  if(IsLossyImageFile(outfilePattern))
+    fprintf(stderr, "WARNING: JPEG output file format will reduce image quality\n");
   for (i = 0; i < batchSize; ++i) {
     char fileName[1024];
     snprintf(fileName, sizeof(fileName), outfilePattern, i);

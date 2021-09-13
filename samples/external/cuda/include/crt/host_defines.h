@@ -97,6 +97,7 @@
 #define __location__(a) \
         __annotate__(a)
 #define CUDARTAPI
+#define CUDARTAPI_CDECL
 
 #elif defined(_MSC_VER)
 
@@ -133,6 +134,8 @@
         __annotate__(__##a##__)
 #define CUDARTAPI \
         __stdcall
+#define CUDARTAPI_CDECL \
+        __cdecl
 
 #else /* __GNUC__ || __CUDA_LIBDEVICE__ || __CUDACC_RTC__ */
 

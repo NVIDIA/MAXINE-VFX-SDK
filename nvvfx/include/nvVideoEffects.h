@@ -207,6 +207,7 @@ NvCV_Status NvVFX_API NvVFX_CudaStreamDestroy(CUstream stream);
 #define NVVFX_OUTPUT_IMAGE              NVVFX_OUTPUT_IMAGE_0  //!< but there is usually only one output image
 #define NVVFX_MODEL_DIRECTORY           "ModelDir"            //!< The directory where the model may be found
 #define NVVFX_CUDA_STREAM               "CudaStream"          //!< The CUDA stream to use
+#define NVVFX_CUDA_GRAPH                "CudaGraph"           //!< Enable CUDA graph to use
 #define NVVFX_INFO                      "Info"                //!< Get info about the effects
 #define NVVFX_SCALE                     "Scale"               //!< Scale factor
 #define NVVFX_STRENGTH                  "Strength"            //!< Strength for different filters
