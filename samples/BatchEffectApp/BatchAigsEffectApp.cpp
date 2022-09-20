@@ -1,6 +1,6 @@
 /*###############################################################################
 #
-# Copyright (c) 2020 NVIDIA Corporation
+# Copyright (c) 2022 NVIDIA Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
 # this software and associated documentation files (the "Software"), to deal in
@@ -21,10 +21,9 @@
 #
 ###############################################################################*/
 
-#include <stdio.h>
-#include <string.h>
-
 #include <string>
+#include <vector>
+
 #include <cuda_runtime_api.h>
 #include "BatchUtilities.h"
 #include "nvCVOpenCV.h"
@@ -40,15 +39,17 @@
 #define BAIL_IF_FALSE(x, err, code) do { if (!(x))                { err = code; goto bail; } } while(0)
 #define BAIL(err, code)             do {                            err = code; goto bail;   } while(0)
 
+#ifdef _WIN32
+  #define DEFAULT_CODEC "avc1"
+#else // !_WIN32
+  #define DEFAULT_CODEC "H264"
+#endif // _WIN32
 
 bool                      FLAG_verbose        = false;
-float                     FLAG_strength       = 0.f,
-                          FLAG_scale          = 1.0;
-int                       FLAG_mode           = 0,
-                          FLAG_resolution     = 0,
-                          FLAG_batchSize      = 8;
+int                       FLAG_mode           = 0;
 std::string               FLAG_outFile,
-                          FLAG_modelDir;
+                          FLAG_modelDir,
+                          FLAG_codec          = DEFAULT_CODEC;
 std::vector<const char*>  FLAG_inFiles;
 
 // Set this when using OTA Updates
@@ -97,14 +98,6 @@ static bool GetFlagArgVal(const char *flag, const char *arg, bool *val) {
   return success;
 }
 
-static bool GetFlagArgVal(const char *flag, const char *arg, float *val) {
-  const char *valStr;
-  bool success = GetFlagArgVal(flag, arg, &valStr);
-  if (success)
-    *val = strtof(valStr, NULL);
-  return success;
-}
-
 static bool GetFlagArgVal(const char *flag, const char *arg, long *val) {
   const char *valStr;
   bool success = GetFlagArgVal(flag, arg, &valStr);
@@ -121,15 +114,25 @@ static bool GetFlagArgVal(const char *flag, const char *arg, int *val) {
   return success;
 }
 
+static int StringToFourcc(const std::string &str) {
+  union chint {
+    int i;
+    char c[4];
+  };
+  chint x = {0};
+  for (int n = (str.size() < 4) ? (int)str.size() : 4; n--;) x.c[n] = str[n];
+  return x.i;
+}
+
 static void Usage() {
   printf(
-    "BatchDenoiseEffectApp [flags ...] inFile1 [ inFileN ...]\n"
+    "BatchAigsEffectApp [flags ...] inFile1 [ inFileN ...]\n"
     "  where flags is:\n"
     "  --out_file=<path>     output video files to be written (a pattern with one %%u or %%d), default \"BatchOut_%%02u.mp4\"\n"
-    "  --strength=<value>    strength of denoising [0-1]\n"
     "  --model_dir=<path>    the path to the directory that contains the models\n"
-    "  --batchsize=<value>   size of the batch (default: 8)\n"
+    "  --mode=<value>        which model to pick for processing (default: 0)\n"
     "  --verbose             verbose output\n"
+    "  --codec=<fourcc>      the fourcc code for the desired codec (default " DEFAULT_CODEC ")\n"
     "  and inFile1 ... are identically sized video files\n"
   );
 }
@@ -142,12 +145,10 @@ static int ParseMyArgs(int argc, char **argv) {
     if (arg[0] == '-') {
       if (arg[1] == '-') {                                      // double-dash
         if (GetFlagArgVal("verbose",    arg, &FLAG_verbose)   ||
-            GetFlagArgVal("strength",   arg, &FLAG_strength)  ||
-            GetFlagArgVal("scale",      arg, &FLAG_scale)     ||
             GetFlagArgVal("mode",       arg, &FLAG_mode)      ||
             GetFlagArgVal("model_dir",  arg, &FLAG_modelDir)  ||
             GetFlagArgVal("out_file",   arg, &FLAG_outFile)   ||
-            GetFlagArgVal("batch_size", arg, &FLAG_batchSize)
+            GetFlagArgVal("codec",      arg, &FLAG_codec)
         ) {
           continue;
         } else if (GetFlagArgVal("help", arg, &help)) {         // --help
@@ -183,17 +184,19 @@ public:
 
 
   App() : _eff(nullptr), _stream(0), _batchSize(0) {}
-  ~App() { NvVFX_DestroyEffect(_eff); if (_stream) NvVFX_CudaStreamDestroy(_stream);  }
+  ~App() {
+    NvVFX_DestroyEffect(_eff); if (_stream) NvVFX_CudaStreamDestroy(_stream);
+  }
 
-  NvCV_Status init(const char* effectName, unsigned batchSize, const NvCVImage *srcImg) {
+  NvCV_Status init(const char* effectName, unsigned batchSize, unsigned int mode, const NvCVImage *srcImg) {
     NvCV_Status err = NVCV_ERR_UNIMPLEMENTED;
  
     _batchSize = batchSize;
     BAIL_IF_ERR(err = NvVFX_CreateEffect(effectName, &_eff));
 
-    BAIL_IF_ERR(err = AllocateBatchBuffer(&_src, _batchSize, srcImg->width, srcImg->height, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_CUDA, 1));   // 
-    BAIL_IF_ERR(err = AllocateBatchBuffer(&_dst, _batchSize, srcImg->width, srcImg->height, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_CUDA, 1));   // 
-    BAIL_IF_ERR(err = NvVFX_SetString(_eff, NVVFX_MODEL_DIRECTORY, FLAG_modelDir.c_str()));                                              // 
+    BAIL_IF_ERR(err = AllocateBatchBuffer(&_src, _batchSize, srcImg->width, srcImg->height, NVCV_BGR, NVCV_U8, NVCV_CHUNKY, NVCV_GPU, 1));
+    BAIL_IF_ERR(err = AllocateBatchBuffer(&_dst, _batchSize, srcImg->width, srcImg->height, NVCV_A, NVCV_U8, NVCV_CHUNKY, NVCV_GPU, 1));
+    BAIL_IF_ERR(err = NvVFX_SetString(_eff, NVVFX_MODEL_DIRECTORY, FLAG_modelDir.c_str()));
 
 
     { // Set parameters.
@@ -202,8 +205,7 @@ public:
       BAIL_IF_ERR(err = NvVFX_SetImage(_eff, NVVFX_OUTPUT_IMAGE, NthImage(0, _dst.height / _batchSize, &_dst, &nth)));  // ... and out
       BAIL_IF_ERR(err = NvVFX_CudaStreamCreate(&_stream));
       BAIL_IF_ERR(err = NvVFX_SetCudaStream(_eff, NVVFX_CUDA_STREAM, _stream));
-
-      BAIL_IF_ERR(err = NvVFX_Load(_eff));                                             
+      BAIL_IF_ERR(err = NvVFX_SetU32(_eff, NVVFX_MODE, mode));
     }
 
   bail:
@@ -212,18 +214,24 @@ public:
 };
 
 
-NvCV_Status BatchProcess(const char* effectName, const std::vector<const char*>& srcVideos, unsigned batchSize, const char *outfilePattern) {
+NvCV_Status BatchProcess(const char* effectName, unsigned int mode,
+  const std::vector<const char*>& srcVideos, const char *outfilePattern, std::string codec) {
   NvCV_Status err       = NVCV_SUCCESS;
   App         app;
   cv::Mat     ocv1, ocv2;
   NvCVImage   nvx1, nvx2;
   unsigned    srcWidth, srcHeight, dstHeight;
 
-  void** arrayOfStates = nullptr;
-  void** batchOfStates = nullptr;
-  unsigned int stateSizeInBytes;
+  std::vector<NvVFX_StateObjectHandle> arrayOfStates;
+  NvVFX_StateObjectHandle* batchOfStates = nullptr;
 
-  unsigned int numOfVideoStreams = static_cast<unsigned int>(srcVideos.size()); 
+  unsigned int numOfVideoStreams = static_cast<unsigned int>(srcVideos.size());
+
+  // If valid states are passed for inference, then -
+  // 1. Effect can only process a batch which is equal to maximum number of video streams
+  // 2. Multiple frames from the same video stream should not be present in the same batch
+  unsigned batchSize = numOfVideoStreams;
+
   std::vector<cv::VideoCapture> srcCaptures(numOfVideoStreams);
   std::vector<cv::VideoWriter> dstWriters(numOfVideoStreams);
   for (unsigned int i = 0; i < numOfVideoStreams; i++) {
@@ -236,10 +244,10 @@ NvCV_Status BatchProcess(const char* effectName, const std::vector<const char*>&
     height = (int)srcCaptures[i].get(cv::CAP_PROP_FRAME_HEIGHT);
     fps = srcCaptures[i].get(cv::CAP_PROP_FPS);
 
-    const int fourcc_h264 = cv::VideoWriter::fourcc('H','2','6','4');
+    const int fourcc = StringToFourcc(codec);
     char fileName[1024];
     snprintf(fileName, sizeof(fileName), outfilePattern, i);
-    dstWriters[i].open(fileName, fourcc_h264, fps, cv::Size2i(width,height));
+    dstWriters[i].open(fileName, fourcc, fps, cv::Size2i(width,height), false);
     if (dstWriters[i].isOpened() == false)  BAIL(err, NVCV_ERR_WRITE);
   }
 
@@ -255,21 +263,27 @@ NvCV_Status BatchProcess(const char* effectName, const std::vector<const char*>&
   srcWidth  = nvx1.width;
   srcHeight = nvx1.height;
 
-  BAIL_IF_ERR(err = app.init(effectName, batchSize, &nvx1)); // Init effect and buffers
+  BAIL_IF_ERR(err = app.init(effectName, batchSize, mode, &nvx1)); // Init effect and buffers
+  BAIL_IF_ERR(err = NvVFX_SetU32(app._eff, NVVFX_MAX_NUMBER_STREAMS, numOfVideoStreams));
+  BAIL_IF_ERR(err = NvVFX_SetU32(app._eff, NVVFX_MODEL_BATCH, numOfVideoStreams>1?8:1));
+  BAIL_IF_ERR(err = NvVFX_Load(app._eff));
 
   // Creating state objects, one per stream.
-  BAIL_IF_ERR(err = NvVFX_GetU32(app._eff, NVVFX_STATE_SIZE, &stateSizeInBytes));
-  arrayOfStates = (void**)calloc(numOfVideoStreams, sizeof(void*)); // allocating void* array of numOfVideoStreams elements
   for (unsigned int i = 0; i < numOfVideoStreams; i++) {
-    cudaMalloc(&arrayOfStates[i], stateSizeInBytes);
-    cudaMemsetAsync(arrayOfStates[i], 0, stateSizeInBytes,app._stream);
+    NvVFX_StateObjectHandle state;
+    BAIL_IF_ERR(err = NvVFX_AllocateState(app._eff, &state));
+    arrayOfStates.push_back(state);
   }
-  //Creating batch array to hold states
-  batchOfStates = (void**)calloc(batchSize, sizeof(void*));
 
-  
+  //Creating batch array to hold states
+  batchOfStates = (NvVFX_StateObjectHandle*)malloc(sizeof(NvVFX_StateObjectHandle) * batchSize);
+  if (batchOfStates == nullptr) {
+    err = NVCV_ERR_MEMORY;
+    goto bail;
+  }
+
   dstHeight = app._dst.height / batchSize;
-  BAIL_IF_ERR(err = NvCVImage_Alloc(&nvx2, app._dst.width, dstHeight, ((app._dst.numComponents == 1) ? NVCV_Y : NVCV_BGR), NVCV_U8, NVCV_CHUNKY, NVCV_CPU, 0));
+  BAIL_IF_ERR(err = NvCVImage_Alloc(&nvx2, app._dst.width, dstHeight, NVCV_A, NVCV_U8, NVCV_CHUNKY, NVCV_CPU, 0));
   CVWrapperForNvCVImage(&nvx2, &ocv2);
   for(int j=0;;j++)
   {
@@ -285,38 +299,43 @@ NvCV_Status BatchProcess(const char* effectName, const std::vector<const char*>&
                "Batching requires all video frames to be of the same size\n", srcVideos[i], nvx1.width, nvx1.height, srcWidth, srcHeight);
         BAIL(err, NVCV_ERR_MISMATCH);
       }
-      BAIL_IF_ERR(err = TransferToNthImage(i, &nvx1, &app._src, 1.f / 255.f, app._stream, &app._stg));
+      BAIL_IF_ERR(err = TransferToNthImage(i, &nvx1, &app._src, 1.f, app._stream, NULL));
       ocv1.release();
     }
 
     // Run batch
     BAIL_IF_ERR(err = NvVFX_SetU32(app._eff, NVVFX_BATCH_SIZE, (unsigned)batchSize));  // The batchSize can change every Run
-    BAIL_IF_ERR(err = NvVFX_SetObject(app._eff, NVVFX_STATE, (void*)batchOfStates));  // The batch of states can change every Run
+    BAIL_IF_ERR(err = NvVFX_SetStateObjectHandleArray(app._eff, NVVFX_STATE, batchOfStates));  // The batch of states can change every Run
     BAIL_IF_ERR(err = NvVFX_Run(app._eff, 0));
 
 
     for (unsigned int i = 0; i < batchSize; ++i) {
       int writerIdx = i % numOfVideoStreams;
-      BAIL_IF_ERR(err = TransferFromNthImage(i, &app._dst, &nvx2, 255.f, app._stream, &app._stg));
+      BAIL_IF_ERR(err = TransferFromNthImage(i, &app._dst, &nvx2, 1.0f, app._stream, NULL));
       dstWriters[writerIdx] << ocv2;
     }
     // NvCVImage_Dealloc() is called in the destructors
   } 
 bail:
-  if (arrayOfStates) {
-    for (unsigned int i = 0; i < numOfVideoStreams; i++) {
-      if (arrayOfStates[i])  cudaFree(arrayOfStates[i]);
-    }
-    free(arrayOfStates);
+  // If DeallocateState fails, all memory allocated in the SDK returns to the heap when the effect handle is destroyed.
+  for (unsigned int i = 0; i < arrayOfStates.size(); i++) {
+    NvVFX_DeallocateState(app._eff, arrayOfStates[i]);
   }
-  if (batchOfStates)  free(batchOfStates);
+  arrayOfStates.clear();
+
+  if (batchOfStates) {
+    free(batchOfStates);
+    batchOfStates = nullptr;
+  }
   
   for (auto& cap : srcCaptures) {
     if (cap.isOpened())  cap.release();
   }
+
   for (auto& writer : dstWriters) {
     if (writer.isOpened())  writer.release();
   }
+
   return err;
 }
 
@@ -329,12 +348,18 @@ int main(int argc, char** argv) {
   if (nErrs)
     return nErrs;
 
+  // If the outFile is missing a stream index
+  // insert one, assuming a period followed by a three-character extension
   if (FLAG_outFile.empty())
     FLAG_outFile = "BatchOut_%02u.mp4";
   else if (std::string::npos == FLAG_outFile.find_first_of('%'))
     FLAG_outFile.insert(FLAG_outFile.size() - 4, "_%02u"); 
 
-  vfxErr = BatchProcess(NVVFX_FX_DENOISING, FLAG_inFiles, FLAG_batchSize, FLAG_outFile.c_str());
+#ifdef NVVFX_FX_GREEN_SCREEN
+  vfxErr = BatchProcess(NVVFX_FX_GREEN_SCREEN, FLAG_mode, FLAG_inFiles, FLAG_outFile.c_str(), FLAG_codec);
+#elif defined(NVVFX_FX_GREEN_SCREEN_I)
+  vfxErr = BatchProcess(NVVFX_FX_GREEN_SCREEN_I, FLAG_mode, FLAG_inFiles, FLAG_outFile.c_str(), FLAG_codec);
+#endif
   if (NVCV_SUCCESS != vfxErr) {
     Usage();
     printf("Error: %s\n", NvCV_GetErrorStringFromCode(vfxErr));

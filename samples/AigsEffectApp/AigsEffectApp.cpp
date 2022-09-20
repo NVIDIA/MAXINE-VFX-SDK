@@ -28,6 +28,7 @@
 #include <chrono>
 #include <string>
 #include <iostream>
+#include <vector>
 
 #include "nvCVOpenCV.h"
 #include "nvVideoEffects.h"
@@ -154,6 +155,7 @@ static void Usage() {
       "                               4 (show input - compNone),\n"
       "                               5 (composite over a specified background image - compBG),\n"
       "                               6 (blur the background of the image - compBlur) }\n"
+      "  --blur_strength=[0-1]      strength of the background blur, when applicable\n"
       "  --cuda_graph               Enable cuda graph.\n"
   );
 }
@@ -330,14 +332,13 @@ struct FXApp {
     _framePeriod = 0.f;
     _lastTime = std::chrono::high_resolution_clock::time_point::min();
     _blurStrength = 0.5f;
+    _maxInputWidth = 3840u;
+    _maxInputHeight = 2160u;
+    _maxNumberStreams = 1u;
+    _batchOfStates = nullptr;
   }
   ~FXApp() {
-    NvVFX_DestroyEffect(_eff);
-    NvVFX_DestroyEffect(_bgblurEff);
-
-    if (_stream) {
-      NvVFX_CudaStreamDestroy(_stream);
-    }
+    destroyEffect();
   }
 
   void setShow(bool show) { _show = show; }
@@ -375,6 +376,11 @@ struct FXApp {
   NvCVImage _dstNvVFXImage;
   NvCVImage _blurNvVFXImage;
   float _blurStrength;
+  unsigned int _maxInputWidth;
+  unsigned int _maxInputHeight;
+  unsigned int _maxNumberStreams;
+  std::vector<NvVFX_StateObjectHandle> _stateArray;
+  NvVFX_StateObjectHandle* _batchOfStates;
 };
 
 const char *FXApp::errorStringFromCode(Err code) {
@@ -530,10 +536,39 @@ NvCV_Status FXApp::createAigsEffect() {
     return vfxErr;
   }
 
+  // Set maximum width, height and number of streams and then call Load() again
+  vfxErr = NvVFX_SetU32(_eff, NVVFX_MAX_INPUT_WIDTH, _maxInputWidth);
+  if (vfxErr != NVCV_SUCCESS) {
+    std::cerr << "Error setting the mode \n";
+    return vfxErr;
+  }
+
+  vfxErr = NvVFX_SetU32(_eff, NVVFX_MAX_INPUT_HEIGHT, _maxInputHeight);
+  if (vfxErr != NVCV_SUCCESS) {
+    std::cerr << "Error setting the mode \n";
+    return vfxErr;
+  }
+
+  vfxErr = NvVFX_SetU32(_eff, NVVFX_MAX_NUMBER_STREAMS, _maxNumberStreams);
+  if (vfxErr != NVCV_SUCCESS) {
+    std::cerr << "Error setting the mode \n";
+    return vfxErr;
+  }
+
   vfxErr = NvVFX_Load(_eff);
   if (vfxErr != NVCV_SUCCESS) {
     std::cerr << "Error loading the model \n";
     return vfxErr;
+  }
+
+  for (unsigned int i = 0; i < _maxNumberStreams; i++) {
+    NvVFX_StateObjectHandle state;
+    vfxErr = NvVFX_AllocateState(_eff, &state);
+    if (NVCV_SUCCESS != vfxErr) {
+      std::cerr << "Error allocate state variable for effect \"" << NVVFX_FX_GREEN_SCREEN << "\"\n";
+      return vfxErr;
+    }
+    _stateArray.push_back(state);
   }
 
   // ------------------ create Background blur effect ------------------ //
@@ -559,8 +594,26 @@ NvCV_Status FXApp::createAigsEffect() {
 }
 
 void FXApp::destroyEffect() {
+  // If DeallocateState fails, all memory allocated in the SDK returns to the heap when the effect handle is destroyed.
+  for (unsigned int i = 0; i < _stateArray.size(); i++) {
+    NvVFX_DeallocateState(_eff, _stateArray[i]);
+  }
+  _stateArray.clear();
+
+  if (_batchOfStates != nullptr) {
+    free(_batchOfStates);
+    _batchOfStates = nullptr;
+  }
+
   NvVFX_DestroyEffect(_eff);
   _eff = nullptr;
+
+  NvVFX_DestroyEffect(_bgblurEff);
+  _bgblurEff = nullptr;
+
+  if (_stream) {
+    NvVFX_CudaStreamDestroy(_stream);
+  }
 }
 
 static void overlay(const cv::Mat &image, const cv::Mat &mask, float alpha, cv::Mat &result) {
@@ -573,6 +626,17 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
   NvCV_Status vfxErr;
   bool ok;
   cv::Mat result;
+  NvCVImage fxSrcChunkyGPU, fxDstChunkyGPU;
+
+  // Allocate space for batchOfStates to hold state variable addresses
+  // Assume that MODEL_BATCH Size is enough for this scenario
+  unsigned int modelBatch = 1;
+  BAIL_IF_ERR(vfxErr = NvVFX_GetU32(_eff, NVVFX_MODEL_BATCH, &modelBatch));
+  _batchOfStates = (NvVFX_StateObjectHandle*) malloc(sizeof(NvVFX_StateObjectHandle) * modelBatch);
+  if (_batchOfStates == nullptr) {
+    vfxErr = NVCV_ERR_MEMORY;
+    goto bail;
+  }
 
   if (!_eff) return errEffect;
   _srcImg = cv::imread(inFile);
@@ -584,12 +648,26 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
   (void)NVWrapperForCVMat(&_srcImg, &_srcVFX);
   (void)NVWrapperForCVMat(&_dstImg, &_dstVFX);
 
-  NvCVImage fxSrcChunkyGPU(_srcImg.cols, _srcImg.rows, NVCV_BGR, NVCV_U8, NVCV_CHUNKY, NVCV_GPU, 1);
-  NvCVImage fxDstChunkyGPU(_srcImg.cols, _srcImg.rows, NVCV_A, NVCV_U8, NVCV_CHUNKY, NVCV_GPU, 1);
+  if (!fxSrcChunkyGPU.pixels)
+  {
+    BAIL_IF_ERR(vfxErr =
+      NvCVImage_Alloc(&fxSrcChunkyGPU, _srcImg.cols, _srcImg.rows, NVCV_BGR, NVCV_U8, NVCV_CHUNKY, NVCV_GPU, 1));
+  }
+  
+  if (!fxDstChunkyGPU.pixels) {
+    BAIL_IF_ERR(vfxErr =
+        NvCVImage_Alloc(&fxDstChunkyGPU, _srcImg.cols, _srcImg.rows, NVCV_A, NVCV_U8, NVCV_CHUNKY, NVCV_GPU, 1));
+  }
 
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_INPUT_IMAGE, &fxSrcChunkyGPU));
   BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_OUTPUT_IMAGE, &fxDstChunkyGPU));
   BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_srcVFX, &fxSrcChunkyGPU, 1.0f, _stream, NULL));
+
+  // Assign states from stateArray in batchOfStates
+  // There is only one stream in this app
+  _batchOfStates[0] = _stateArray[0];
+  BAIL_IF_ERR(vfxErr = NvVFX_SetStateObjectHandleArray(_eff, NVVFX_STATE, _batchOfStates));
+
   BAIL_IF_ERR(vfxErr = NvVFX_Run(_eff, 0));
   BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&fxDstChunkyGPU, &_dstVFX, 1.0f, _stream, NULL));
 
@@ -627,6 +705,7 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
   cv::VideoWriter writer;
   unsigned frameNum;
   VideoInfo info;
+  unsigned int modelBatch = 1;
 
   if (inFile && !inFile[0]) inFile = nullptr;  // Set file paths to NULL if zero length
   if (outFile && !outFile[0]) outFile = nullptr;
@@ -698,6 +777,15 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
       }
   }
 
+  // Allocate space for batchOfStates to hold state variable addresses
+  // Assume that MODEL_BATCH Size is enough for this scenario
+  BAIL_IF_ERR(vfxErr = NvVFX_GetU32(_eff, NVVFX_MODEL_BATCH, &modelBatch));
+  _batchOfStates = (NvVFX_StateObjectHandle*) malloc(sizeof(NvVFX_StateObjectHandle) * modelBatch);
+  if (_batchOfStates == nullptr) {
+    vfxErr = NVCV_ERR_MEMORY;
+    goto bail;
+  }
+
   // allocate src for GPU
   if (!_srcNvVFXImage.pixels)
     BAIL_IF_ERR(vfxErr =
@@ -725,6 +813,11 @@ FXApp::Err FXApp::processMovie(const char *inFile, const char *outFile) {
     BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_INPUT_IMAGE, &_srcNvVFXImage));
     BAIL_IF_ERR(vfxErr = NvVFX_SetImage(_eff, NVVFX_OUTPUT_IMAGE, &_dstNvVFXImage));
     BAIL_IF_ERR(vfxErr = NvCVImage_Transfer(&_srcVFX, &_srcNvVFXImage, 1.0f, _stream, NULL));
+
+    // Assign states from stateArray in batchOfStates
+    // There is only one stream in this app
+    _batchOfStates[0] = _stateArray[0];
+    BAIL_IF_ERR(vfxErr = NvVFX_SetStateObjectHandleArray(_eff, NVVFX_STATE, _batchOfStates));
 
     auto startTime = std::chrono::high_resolution_clock::now();
     BAIL_IF_ERR(vfxErr = NvVFX_Run(_eff, 0));

@@ -106,6 +106,22 @@ inline __device__  cudaError_t CUDARTAPI cudaOccupancyMaxActiveBlocksPerMultipro
 
 #endif /* !defined(__CUDACC_RTC__) */
 
+#if defined(__DOXYGEN_ONLY__) || defined(CUDA_ENABLE_DEPRECATED)
+# define __DEPRECATED__(msg)
+#elif defined(_WIN32)
+# define __DEPRECATED__(msg) __declspec(deprecated(msg))
+#elif (defined(__GNUC__) && (__GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 5 && !defined(__clang__))))
+# define __DEPRECATED__(msg) __attribute__((deprecated))
+#else
+# define __DEPRECATED__(msg) __attribute__((deprecated(msg)))
+#endif
+
+#if defined(__CUDA_ARCH__) && !defined(__CDPRT_SUPPRESS_SYNC_DEPRECATION_WARNING)
+# define __CDPRT_DEPRECATED(func_name) __DEPRECATED__("Use of "#func_name" from device code is deprecated and will not be supported in a future release. Disable this warning with -D__CDPRT_SUPPRESS_SYNC_DEPRECATION_WARNING.")
+#else
+# define __CDPRT_DEPRECATED(func_name)
+#endif
+
 #if defined(__cplusplus) && defined(__CUDACC__)         /* Visible to nvcc front-end only */
 #if !defined(__CUDA_ARCH__) || (__CUDA_ARCH__ >= 350)   // Visible to SM>=3.5 and "__host__ __device__" only
 
@@ -118,7 +134,8 @@ extern __device__ __cudart_builtin__ cudaError_t CUDARTAPI cudaDeviceGetAttribut
 extern __device__ __cudart_builtin__ cudaError_t CUDARTAPI cudaDeviceGetLimit(size_t *pValue, enum cudaLimit limit);
 extern __device__ __cudart_builtin__ cudaError_t CUDARTAPI cudaDeviceGetCacheConfig(enum cudaFuncCache *pCacheConfig);
 extern __device__ __cudart_builtin__ cudaError_t CUDARTAPI cudaDeviceGetSharedMemConfig(enum cudaSharedMemConfig *pConfig);
-extern __device__ __cudart_builtin__ cudaError_t CUDARTAPI cudaDeviceSynchronize(void);
+extern __device__ __cudart_builtin__ __CDPRT_DEPRECATED(cudaDeviceSynchronize) cudaError_t CUDARTAPI cudaDeviceSynchronize(void);
+extern __device__ __cudart_builtin__ cudaError_t CUDARTAPI __cudaDeviceSynchronizeDeprecationAvoidance(void);
 extern __device__ __cudart_builtin__ cudaError_t CUDARTAPI cudaGetLastError(void);
 extern __device__ __cudart_builtin__ cudaError_t CUDARTAPI cudaPeekAtLastError(void);
 extern __device__ __cudart_builtin__ const char* CUDARTAPI cudaGetErrorString(cudaError_t error);
@@ -241,5 +258,8 @@ template <typename T> static __inline__ __device__ __cudart_builtin__ cudaError_
 
 #endif // !defined(__CUDA_ARCH__) || (__CUDA_ARCH__ >= 350)
 #endif /* defined(__cplusplus) && defined(__CUDACC__) */
+
+#undef __DEPRECATED__
+#undef __CDPRT_DEPRECATED
 
 #endif /* !__CUDA_DEVICE_RUNTIME_API_H__ */

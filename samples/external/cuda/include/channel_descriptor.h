@@ -86,7 +86,27 @@
  * \endcode
  *
  * where ::cudaChannelFormatKind is one of ::cudaChannelFormatKindSigned,
- * ::cudaChannelFormatKindUnsigned, cudaChannelFormatKindFloat or ::cudaChannelFormatKindNV12.
+ * ::cudaChannelFormatKindUnsigned, cudaChannelFormatKindFloat,
+ * ::cudaChannelFormatKindSignedNormalized8X1, ::cudaChannelFormatKindSignedNormalized8X2,
+ * ::cudaChannelFormatKindSignedNormalized8X4,
+ * ::cudaChannelFormatKindUnsignedNormalized8X1, ::cudaChannelFormatKindUnsignedNormalized8X2,
+ * ::cudaChannelFormatKindUnsignedNormalized8X4,
+ * ::cudaChannelFormatKindSignedNormalized16X1, ::cudaChannelFormatKindSignedNormalized16X2,
+ * ::cudaChannelFormatKindSignedNormalized16X4,
+ * ::cudaChannelFormatKindUnsignedNormalized16X1, ::cudaChannelFormatKindUnsignedNormalized16X2,
+ * ::cudaChannelFormatKindUnsignedNormalized16X4
+ * or ::cudaChannelFormatKindNV12.
+ *
+ * The format is specified by the template specialization.
+ *
+ * The template function specializes for the following scalar types:
+ * char, signed char, unsigned char, short, unsigned short, int, unsigned int, long, unsigned long, and float.
+ * The template function specializes for the following vector types:
+ * char{1|2|4}, uchar{1|2|4}, short{1|2|4}, ushort{1|2|4}, int{1|2|4}, uint{1|2|4}, long{1|2|4}, ulong{1|2|4}, float{1|2|4}.
+ * The template function specializes for following cudaChannelFormatKind enum values:
+ * ::cudaChannelFormatKind{Uns|S}ignedNormalized{8|16}X{1|2|4}, and ::cudaChannelFormatKindNV12.
+ *
+ * Invoking the function on a type without a specialization defaults to creating a channel format of kind ::cudaChannelFormatKindNone
  *
  * \return
  * Channel descriptor with format \p f
@@ -407,6 +427,166 @@ static __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDescNV12(void)
 
     return cudaCreateChannelDesc(e, e, e, 0, cudaChannelFormatKindNV12);
 }
+
+template<cudaChannelFormatKind> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc(void)
+{
+    return cudaCreateChannelDesc(0, 0, 0, 0, cudaChannelFormatKindNone);
+}
+
+/* Signed 8-bit normalized integer formats */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindSignedNormalized8X1>(void)
+{
+    return cudaCreateChannelDesc(8, 0, 0, 0, cudaChannelFormatKindSignedNormalized8X1);
+}
+
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindSignedNormalized8X2>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 0, 0, cudaChannelFormatKindSignedNormalized8X2);
+}
+
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindSignedNormalized8X4>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindSignedNormalized8X4);
+}
+
+/* Unsigned 8-bit normalized integer formats */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedNormalized8X1>(void)
+{
+    return cudaCreateChannelDesc(8, 0, 0, 0, cudaChannelFormatKindUnsignedNormalized8X1);
+}
+
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedNormalized8X2>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 0, 0, cudaChannelFormatKindUnsignedNormalized8X2);
+}
+
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedNormalized8X4>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindUnsignedNormalized8X4);
+}
+
+/* Signed 16-bit normalized integer formats */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindSignedNormalized16X1>(void)
+{
+    return cudaCreateChannelDesc(16, 0, 0, 0, cudaChannelFormatKindSignedNormalized16X1);
+}
+
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindSignedNormalized16X2>(void)
+{
+    return cudaCreateChannelDesc(16, 16, 0, 0, cudaChannelFormatKindSignedNormalized16X2);
+}
+
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindSignedNormalized16X4>(void)
+{
+    return cudaCreateChannelDesc(16, 16, 16, 16, cudaChannelFormatKindSignedNormalized16X4);
+}
+
+/* Unsigned 16-bit normalized integer formats */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedNormalized16X1>(void)
+{
+    return cudaCreateChannelDesc(16, 0, 0, 0, cudaChannelFormatKindUnsignedNormalized16X1);
+}
+
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedNormalized16X2>(void)
+{
+    return cudaCreateChannelDesc(16, 16, 0, 0, cudaChannelFormatKindUnsignedNormalized16X2);
+}
+
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedNormalized16X4>(void)
+{
+    return cudaCreateChannelDesc(16, 16, 16, 16, cudaChannelFormatKindUnsignedNormalized16X4);
+}
+
+/* NV12 format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindNV12>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 8, 0, cudaChannelFormatKindNV12);
+}
+
+/* BC1 format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedBlockCompressed1>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindUnsignedBlockCompressed1);
+}
+
+/* BC1sRGB format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedBlockCompressed1SRGB>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindUnsignedBlockCompressed1SRGB);
+}
+
+/* BC2 format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedBlockCompressed2>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindUnsignedBlockCompressed2);
+}
+
+/* BC2sRGB format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedBlockCompressed2SRGB>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindUnsignedBlockCompressed2SRGB);
+}
+
+/* BC3 format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedBlockCompressed3>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindUnsignedBlockCompressed3);
+}
+
+/* BC3sRGB format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedBlockCompressed3SRGB>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindUnsignedBlockCompressed3SRGB);
+}
+
+/* BC4 unsigned format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedBlockCompressed4>(void)
+{
+    return cudaCreateChannelDesc(8, 0, 0, 0, cudaChannelFormatKindUnsignedBlockCompressed4);
+}
+
+/* BC4 signed format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindSignedBlockCompressed4>(void)
+{
+    return cudaCreateChannelDesc(8, 0, 0, 0, cudaChannelFormatKindSignedBlockCompressed4);
+}
+
+/* BC5 unsigned format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedBlockCompressed5>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 0, 0, cudaChannelFormatKindUnsignedBlockCompressed5);
+}
+
+/* BC5 signed format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindSignedBlockCompressed5>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 0, 0, cudaChannelFormatKindSignedBlockCompressed5);
+}
+
+/* BC6H unsigned format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedBlockCompressed6H>(void)
+{
+    return cudaCreateChannelDesc(16, 16, 16, 0, cudaChannelFormatKindUnsignedBlockCompressed6H);
+}
+
+/* BC6H signed format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindSignedBlockCompressed6H>(void)
+{
+    return cudaCreateChannelDesc(16, 16, 16, 0, cudaChannelFormatKindSignedBlockCompressed6H);
+}
+
+/* BC7 format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedBlockCompressed7>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindUnsignedBlockCompressed7);
+}
+
+/* BC7sRGB format */
+template<> __inline__ __host__ cudaChannelFormatDesc cudaCreateChannelDesc<cudaChannelFormatKindUnsignedBlockCompressed7SRGB>(void)
+{
+    return cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindUnsignedBlockCompressed7SRGB);
+}
+
 #endif /* __cplusplus */
 
 /** @} */

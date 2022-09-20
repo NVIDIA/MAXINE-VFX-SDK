@@ -244,16 +244,9 @@ public:
     else if (!strcmp(effectName, NVVFX_FX_SR_UPSCALE)) {
       BAIL_IF_ERR(err = AllocateBatchBuffer(&_src, _batchSize, src->width, src->height, NVCV_RGBA, NVCV_U8, NVCV_CHUNKY, NVCV_CUDA, 32)); // n*32, n>=0
       BAIL_IF_ERR(err = AllocateBatchBuffer(&_dst, _batchSize, dw,         dh,          NVCV_RGBA, NVCV_U8, NVCV_CHUNKY, NVCV_CUDA, 32));
+      BAIL_IF_ERR(err = NvVFX_SetF32(_eff, NVVFX_STRENGTH, FLAG_strength));
     }
 #endif // NVVFX_FX_SR_UPSCALE
-#ifdef NVVFX_FX_GREEN_SCREEN
-    else if (!strcmp(effectName, NVVFX_FX_GREEN_SCREEN)) {
-      BAIL_IF_ERR(err = AllocateBatchBuffer(&_src, _batchSize, src->width, src->height, NVCV_BGR, NVCV_U8, NVCV_CHUNKY, NVCV_CUDA, 1));
-      BAIL_IF_ERR(err = AllocateBatchBuffer(&_dst, _batchSize, src->width, src->height, NVCV_Y,   NVCV_U8, NVCV_CHUNKY, NVCV_CUDA, 1));
-      BAIL_IF_ERR(err = NvVFX_SetString(_eff, NVVFX_MODEL_DIRECTORY, FLAG_modelDir.c_str()));
-      BAIL_IF_ERR(err = NvVFX_SetU32(_eff, NVVFX_MODE, FLAG_mode));
-    }
-#endif // NVVFX_FX_GREEN_SCREEN
 #ifdef NVVFX_FX_ARTIFACT_REDUCTION
     else if (!strcmp(effectName, NVVFX_FX_ARTIFACT_REDUCTION)) {
       BAIL_IF_ERR(err = AllocateBatchBuffer(&_src, _batchSize, src->width, src->height, NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_CUDA, 1));
@@ -268,6 +261,7 @@ public:
       BAIL_IF_ERR(err = AllocateBatchBuffer(&_dst, _batchSize, dw,         dh,          NVCV_BGR, NVCV_F32, NVCV_PLANAR, NVCV_CUDA, 1));
       BAIL_IF_ERR(err = NvVFX_SetString(_eff, NVVFX_MODEL_DIRECTORY, FLAG_modelDir.c_str()));
       BAIL_IF_ERR(err = NvVFX_SetU32(_eff, NVVFX_MODE, FLAG_mode));
+      BAIL_IF_ERR(err = NvVFX_SetF32(_eff, NVVFX_STRENGTH, FLAG_strength));
     }
 #endif // NVVFX_FX_SUPER_RES
     else {

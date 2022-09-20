@@ -169,6 +169,13 @@ NvCV_Status NvVFX_API NvVFX_SetObject(NvVFX_Handle obj, NvVFX_ParameterSelector 
   return funcPtr(obj, paramName, ptr);
 }
 
+NvCV_Status NvVFX_API NvVFX_SetStateObjectHandleArray(NvVFX_Handle obj, NvVFX_ParameterSelector paramName, NvVFX_StateObjectHandle* handle) {
+  static const auto funcPtr = (decltype(NvVFX_SetStateObjectHandleArray)*)nvGetProcAddress(getNvVfxLib(), "NvVFX_SetStateObjectHandleArray");
+
+  if (nullptr == funcPtr) return NVCV_ERR_LIBRARY;
+  return funcPtr(obj, paramName, handle);
+}
+
 NvCV_Status NvVFX_API NvVFX_SetString(NvVFX_Handle obj, NvVFX_ParameterSelector paramName, const char* str) {
   static const auto funcPtr = (decltype(NvVFX_SetString)*)nvGetProcAddress(getNvVfxLib(), "NvVFX_SetString");
 
@@ -274,6 +281,27 @@ NvCV_Status NvVFX_API NvVFX_CudaStreamDestroy(CUstream stream) {
 
   if (nullptr == funcPtr) return NVCV_ERR_LIBRARY;
   return funcPtr(stream);
+}
+
+NvCV_Status NvVFX_API NvVFX_AllocateState(NvVFX_Handle obj, NvVFX_StateObjectHandle* handle) {
+  static const auto funcPtr = (decltype(NvVFX_AllocateState)*)nvGetProcAddress(getNvVfxLib(), "NvVFX_AllocateState");
+
+  if (nullptr == funcPtr) return NVCV_ERR_LIBRARY;
+  return funcPtr(obj, handle);
+}
+
+NvCV_Status NvVFX_API NvVFX_DeallocateState(NvVFX_Handle obj, NvVFX_StateObjectHandle handle) {
+  static const auto funcPtr = (decltype(NvVFX_DeallocateState)*)nvGetProcAddress(getNvVfxLib(), "NvVFX_DeallocateState");
+
+  if (nullptr == funcPtr) return NVCV_ERR_LIBRARY;
+  return funcPtr(obj, handle);
+}
+
+NvCV_Status NvVFX_API NvVFX_ResetState(NvVFX_Handle obj, NvVFX_StateObjectHandle handle) {
+  static const auto funcPtr = (decltype(NvVFX_ResetState)*)nvGetProcAddress(getNvVfxLib(), "NvVFX_ResetState");
+
+  if (nullptr == funcPtr) return NVCV_ERR_LIBRARY;
+  return funcPtr(obj, handle);
 }
 
 #endif // enabling for this file

@@ -132,8 +132,14 @@ NvCV_Status NvCV_API NvCVImage_Realloc(NvCVImage* im, unsigned width, unsigned h
 
 void NvCV_API NvCVImage_Dealloc(NvCVImage* im) {
   static const auto funcPtr = (decltype(NvCVImage_Dealloc)*)nvGetProcAddress(getNvCVImageLib(), "NvCVImage_Dealloc");
-  
+
   if (nullptr != funcPtr) funcPtr(im);
+}
+
+void NvCV_API NvCVImage_DeallocAsync(NvCVImage* im,  CUstream_st* stream) {
+  static const auto funcPtr = (decltype(NvCVImage_DeallocAsync)*)nvGetProcAddress(getNvCVImageLib(), "NvCVImage_DeallocAsync");
+
+  if (nullptr != funcPtr) funcPtr(im, stream);
 }
 
 NvCV_Status NvCV_API NvCVImage_Create(unsigned width, unsigned height, NvCVImage_PixelFormat format,
@@ -264,6 +270,14 @@ NvCV_Status NvCV_API NvCVImage_FlipY(const NvCVImage *src, NvCVImage *dst) {
    
   if (nullptr == funcPtr) return NVCV_ERR_LIBRARY;
   return funcPtr(src, dst);
+}
+
+NvCV_Status NvCV_API NvCVImage_Sharpen(float sharpness, const NvCVImage *src, NvCVImage *dst,
+    struct CUstream_st *stream, NvCVImage *tmp) {
+  static const auto funcPtr = (decltype(NvCVImage_Sharpen)*)nvGetProcAddress(getNvCVImageLib(), "NvCVImage_Sharpen");
+
+  if (nullptr == funcPtr) return NVCV_ERR_LIBRARY;
+  return funcPtr(sharpness, src, dst, stream, tmp);
 }
 
 #ifdef _WIN32

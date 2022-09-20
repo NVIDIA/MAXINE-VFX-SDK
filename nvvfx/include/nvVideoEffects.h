@@ -55,6 +55,12 @@ typedef const char* NvVFX_ParameterSelector;
 struct NvVFX_Object;
 typedef struct NvVFX_Object NvVFX_Object, *NvVFX_Handle;
 
+///! 
+///! Effect may use this handle to manage state objects.
+///! 
+struct NvVFX_StateObjectHandleBase;
+typedef struct NvVFX_StateObjectHandleBase* NvVFX_StateObjectHandle;
+
 //! Get the SDK version
 //! \param[in,out]  version    Pointer to an unsigned int set to 
 //!                            (major << 24) | (minor << 16) | (build << 8) | 0
@@ -88,6 +94,7 @@ NvCV_Status NvVFX_API NvVFX_SetF32(NvVFX_Handle effect, NvVFX_ParameterSelector 
 NvCV_Status NvVFX_API NvVFX_SetF64(NvVFX_Handle effect, NvVFX_ParameterSelector paramName, double val);
 NvCV_Status NvVFX_API NvVFX_SetU64(NvVFX_Handle effect, NvVFX_ParameterSelector paramName, unsigned long long val);
 NvCV_Status NvVFX_API NvVFX_SetObject(NvVFX_Handle effect, NvVFX_ParameterSelector paramName, void *ptr);
+NvCV_Status NvVFX_API NvVFX_SetStateObjectHandleArray(NvVFX_Handle effect, NvVFX_ParameterSelector paramName, NvVFX_StateObjectHandle* handle);
 NvCV_Status NvVFX_API NvVFX_SetCudaStream(NvVFX_Handle effect, NvVFX_ParameterSelector paramName, CUstream stream);
 
 //! Set the selected image descriptor.
@@ -167,27 +174,49 @@ NvCV_Status NvVFX_API NvVFX_GetString(NvVFX_Handle effect, NvVFX_ParameterSelect
 //! \param[in]  async   run the effect asynchronously if nonzero; otherwise run synchronously.
 //! \todo       Should async instead be a pointer to a place to store a token that can be useful
 //!             for synchronizing two streams alter?
-//! \return     NVFVX_SUCCESS     if the operation was successful.
+//! \return     NVCV_SUCCESS     if the operation was successful.
 //! \return     NVCV_ERR_EFFECT  if an invalid effect handle was supplied.
 NvCV_Status NvVFX_API NvVFX_Run(NvVFX_Handle effect, int async);
 
 //! Load the model based on the set params.
 //! \param[in]  effect     the effect object handle.
-//! \return     NVFVX_SUCCESS     if the operation was successful.
+//! \return     NVCV_SUCCESS     if the operation was successful.
 //! \return     NVCV_ERR_EFFECT  if an invalid effect handle was supplied.
 NvCV_Status NvVFX_API NvVFX_Load(NvVFX_Handle effect);
 
 //! Wrapper for cudaStreamCreate(), if it is desired to avoid linking with the cuda lib.
 //! \param[out] stream  A place to store the newly allocated stream.
-//! \return     NVFVX_SUCCESS         if the operation was successful,
+//! \return     NVCV_SUCCESS         if the operation was successful,
 //!             NVCV_ERR_CUDA_VALUE  if not.
 NvCV_Status NvVFX_API NvVFX_CudaStreamCreate(CUstream *stream);
 
 //! Wrapper for cudaStreamDestroy(), if it is desired to avoid linking with the cuda lib.
 //! \param[in]  stream  The stream to destroy.
-//! \return     NVFVX_SUCCESS         if the operation was successful,
+//! \return     NVCV_SUCCESS         if the operation was successful,
 //!             NVCV_ERR_CUDA_VALUE  if not.
 NvCV_Status NvVFX_API NvVFX_CudaStreamDestroy(CUstream stream);
+
+//! Allocate the state object handle for a feature.
+//! \param[in]  effect   the effect object handle.
+//! \param[in]  handle   handle to the state object
+//! \return     NVCV_SUCCESS    if the operation was successful.
+//! \return     NVCV_ERR_EFFECT  if an invalid effect handle was supplied.
+//! \note This may depend on prior settings of parameters.
+NvCV_Status NvVFX_API NvVFX_AllocateState(NvVFX_Handle effect, NvVFX_StateObjectHandle* handle);
+
+//! Deallocate the state object handle for stateful feature.
+//! \param[in]  effect   the effect object handle.
+//! \param[in]  handle   handle to the state object
+//! \return     NVCV_SUCCESS    if the operation was successful.
+//! \return     NVCV_ERR_EFFECT  if an invalid effect handle was supplied.
+NvCV_Status NvVFX_API NvVFX_DeallocateState(NvVFX_Handle effect, NvVFX_StateObjectHandle handle);
+
+//! Reset the state object handle for stateful feature.
+//! \param[in]  effect   the effect object handle.
+//! \param[in]  handle   handle to the state object
+//! \return     NVCV_SUCCESS    if the operation was successful.
+//! \return     NVCV_ERR_EFFECT  if an invalid effect handle was supplied.
+NvCV_Status NvVFX_API NvVFX_ResetState(NvVFX_Handle effect, NvVFX_StateObjectHandle handle);
 
 
 // Filter selectors
@@ -209,6 +238,9 @@ NvCV_Status NvVFX_API NvVFX_CudaStreamDestroy(CUstream stream);
 #define NVVFX_CUDA_STREAM               "CudaStream"          //!< The CUDA stream to use
 #define NVVFX_CUDA_GRAPH                "CudaGraph"           //!< Enable CUDA graph to use
 #define NVVFX_INFO                      "Info"                //!< Get info about the effects
+#define NVVFX_MAX_INPUT_WIDTH           "MaxInputWidth"       //!< Maximum width of the input supported
+#define NVVFX_MAX_INPUT_HEIGHT          "MaxInputHeight"      //!< Maximum height of the input supported
+#define NVVFX_MAX_NUMBER_STREAMS        "MaxNumberStreams"  //!< Maximum number of concurrent input streams
 #define NVVFX_SCALE                     "Scale"               //!< Scale factor
 #define NVVFX_STRENGTH                  "Strength"            //!< Strength for different filters
 #define NVVFX_STRENGTH_LEVELS           "StrengthLevels"      //!< Number of strength levels
@@ -219,7 +251,7 @@ NvCV_Status NvVFX_API NvVFX_CudaStreamDestroy(CUstream stream);
 #define NVVFX_MODEL_BATCH               "ModelBatch"          //!< The preferred batching model to use (default 1)
 #define NVVFX_STATE                     "State"               //!< State variable  
 #define NVVFX_STATE_SIZE                "StateSize"           //!< Number of bytes needed to store state  
-
+#define NVVFX_STATE_COUNT               "NumStateObjects"     //!< Number of active state object handles
 
 
 #ifdef __cplusplus

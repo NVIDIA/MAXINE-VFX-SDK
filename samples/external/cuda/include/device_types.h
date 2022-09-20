@@ -55,7 +55,9 @@
 #define __UNDEF_CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS_DEVICE_TYPES_H__
 #endif
 
+#ifndef __DOXYGEN_ONLY__
 #include "crt/host_defines.h"
+#endif
 
 /*******************************************************************************
 *                                                                              *

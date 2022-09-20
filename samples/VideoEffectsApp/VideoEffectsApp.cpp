@@ -57,7 +57,7 @@ bool        FLAG_debug          = false,
             FLAG_progress       = false,
             FLAG_webcam         = false;
 float       FLAG_strength       = 0.f;
-int         FLAG_mode = 0;
+int         FLAG_mode           = 0;
 int         FLAG_resolution     = 0;
 std::string FLAG_codec          = DEFAULT_CODEC,
             FLAG_camRes         = "1280x720",
@@ -519,6 +519,7 @@ NvCV_Status FXApp::allocBuffers(unsigned width, unsigned height) {
       printf("--resolution has not been specified\n");
       return NVCV_ERR_PARAMETER;
     }
+    BAIL_IF_ERR(vfxErr = NvVFX_SetF32(_eff, NVVFX_STRENGTH, FLAG_strength));
     int dstWidth = _srcImg.cols * FLAG_resolution / _srcImg.rows;
     _dstImg.create(FLAG_resolution, dstWidth, _srcImg.type());                                                                     // dst CPU
     BAIL_IF_NULL(_dstImg.data, vfxErr, NVCV_ERR_MEMORY);

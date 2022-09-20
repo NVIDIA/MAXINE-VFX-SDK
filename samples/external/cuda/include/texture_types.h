@@ -212,6 +212,10 @@ struct __device_builtin__ cudaTextureDesc
      * Disable any trilinear filtering optimizations.
      */
     int                         disableTrilinearOptimization;
+    /**
+     * Enable seamless cube map filtering.
+     */
+    int                         seamlessCubemap;
 };
 
 /**

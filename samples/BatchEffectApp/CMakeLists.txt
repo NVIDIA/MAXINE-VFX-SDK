@@ -17,20 +17,32 @@ target_include_directories(BatchEffectApp PUBLIC
     ${SDK_INCLUDES_PATH}
     )
 
-target_link_libraries(BatchEffectApp PUBLIC
-    opencv346
-    NVVideoEffects
-    ${CMAKE_CURRENT_SOURCE_DIR}/../external/cuda/lib/x64/cudart.lib
-    )
+if(MSVC)
 
-set(OPENCV_PATH_STR ${CMAKE_CURRENT_SOURCE_DIR}/../external/opencv/bin)
-set(PATH_STR "PATH=%PATH%" ${OPENCV_PATH_STR})
-set(CMD_ARG_STR "--show --in_file=\"${CMAKE_CURRENT_SOURCE_DIR}/../input/input_003054.jpg\" ")
-set_target_properties(BatchEffectApp PROPERTIES
-    FOLDER SampleApps
-    VS_DEBUGGER_ENVIRONMENT "${PATH_STR}"
-    VS_DEBUGGER_COMMAND_ARGUMENTS "${CMD_ARG_STR}"
-    )
+    target_link_libraries(BatchEffectApp PUBLIC
+        opencv346
+        NVVideoEffects
+        ${CMAKE_CURRENT_SOURCE_DIR}/../external/cuda/lib/x64/cudart.lib
+        )
+
+    set(OPENCV_PATH_STR ${CMAKE_CURRENT_SOURCE_DIR}/../external/opencv/bin)
+    set(PATH_STR "PATH=%PATH%" ${OPENCV_PATH_STR})
+    set(CMD_ARG_STR "--show --in_file=\"${CMAKE_CURRENT_SOURCE_DIR}/../input/input_003054.jpg\" ")
+    set_target_properties(BatchEffectApp PROPERTIES
+        FOLDER SampleApps
+        VS_DEBUGGER_ENVIRONMENT "${PATH_STR}"
+        VS_DEBUGGER_COMMAND_ARGUMENTS "${CMD_ARG_STR}"
+        )
+else()
+
+    target_link_libraries(BatchEffectApp PUBLIC
+        NVVideoEffects
+        NVCVImage
+        OpenCV
+        TensorRT
+        CUDA
+        )
+endif()
 
 #Batch denoise effect
 set(SOURCE_FILES
@@ -51,19 +63,75 @@ target_include_directories(BatchDenoiseEffectApp PUBLIC
     ${SDK_INCLUDES_PATH}
     )
 
-
-target_link_libraries(BatchDenoiseEffectApp PUBLIC
-	opencv346
-	NVVideoEffects
-	${CMAKE_CURRENT_SOURCE_DIR}/../external/cuda/lib/x64/cudart.lib
-	)
-target_include_directories(BatchDenoiseEffectApp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../external/cuda/include)
+if(MSVC)
+    target_link_libraries(BatchDenoiseEffectApp PUBLIC
+        opencv346
+        NVVideoEffects
+        ${CMAKE_CURRENT_SOURCE_DIR}/../external/cuda/lib/x64/cudart.lib
+        )
+    target_include_directories(BatchDenoiseEffectApp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../external/cuda/include)
     
-set(OPENCV_PATH_STR ${CMAKE_CURRENT_SOURCE_DIR}/../external/opencv/bin)
-set(PATH_STR "PATH=%PATH%" ${OPENCV_PATH_STR})
-set(CMD_ARG_STR "video1.mp4 video2.mp4 ")
-set_target_properties(BatchDenoiseEffectApp PROPERTIES
-	FOLDER SampleApps
-	VS_DEBUGGER_ENVIRONMENT "${PATH_STR}"
-	VS_DEBUGGER_COMMAND_ARGUMENTS "${CMD_ARG_STR}"
-	)
+    set(OPENCV_PATH_STR ${CMAKE_CURRENT_SOURCE_DIR}/../external/opencv/bin)
+    set(PATH_STR "PATH=%PATH%" ${OPENCV_PATH_STR})
+    set(CMD_ARG_STR "video1.mp4 video2.mp4 ")
+    set_target_properties(BatchDenoiseEffectApp PROPERTIES
+        FOLDER SampleApps
+        VS_DEBUGGER_ENVIRONMENT "${PATH_STR}"
+        VS_DEBUGGER_COMMAND_ARGUMENTS "${CMD_ARG_STR}"
+        )
+else()
+
+    target_link_libraries(BatchDenoiseEffectApp PUBLIC
+        NVVideoEffects
+        NVCVImage
+        OpenCV
+        TensorRT
+        CUDA
+        )
+endif()
+
+#Batch aigs effect
+set(SOURCE_FILES
+    BatchAigsEffectApp.cpp
+    BatchUtilities.cpp
+    ../../nvvfx/src/nvVideoEffectsProxy.cpp
+    ../../nvvfx/src/nvCVImageProxy.cpp)
+
+# Set Visual Studio source filters
+source_group("Source Files" FILES ${SOURCE_FILES})
+
+add_executable(BatchAigsEffectApp ${SOURCE_FILES})
+target_include_directories(BatchAigsEffectApp PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../utils
+    )
+target_include_directories(BatchAigsEffectApp PUBLIC
+    ${SDK_INCLUDES_PATH}
+    )
+
+if(MSVC)
+    target_link_libraries(BatchAigsEffectApp PUBLIC
+        opencv346
+        NVVideoEffects
+        ${CMAKE_CURRENT_SOURCE_DIR}/../external/cuda/lib/x64/cudart.lib
+        )
+    target_include_directories(BatchAigsEffectApp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../external/cuda/include)
+    
+    set(OPENCV_PATH_STR ${CMAKE_CURRENT_SOURCE_DIR}/../external/opencv/bin)
+    set(PATH_STR "PATH=%PATH%" ${OPENCV_PATH_STR})
+    set(CMD_ARG_STR "video1.mp4 video2.mp4 ")
+    set_target_properties(BatchAigsEffectApp PROPERTIES
+        FOLDER SampleApps
+        VS_DEBUGGER_ENVIRONMENT "${PATH_STR}"
+        VS_DEBUGGER_COMMAND_ARGUMENTS "${CMD_ARG_STR}"
+        )
+else()
+
+    target_link_libraries(BatchAigsEffectApp PUBLIC
+        NVVideoEffects
+        NVCVImage
+        OpenCV
+        TensorRT
+        CUDA
+        )
+endif()

@@ -1,40 +1,39 @@
 # README
 ## NVIDIA MAXINE VideoEffects SDK: API Source Code and Sample Applications
 
-NVIDIA MAXINE VideoEffects SDK is an SDK for enhancing and applying filters to videos at real-time. The SDK is powered by NVIDIA graphics processing units (GPUs) with Tensor Cores, and as a result, the algorithm throughput is greatly accelerated, and latency is reduced.
+NVIDIA MAXINE Video Effects SDK enables AI-based visual effects that run with standard webcam input and can easily be integrated into video conference and content creation pipelines. The underlying deep learning models are optimized with NVIDIA AI using NVIDIA® TensorRT™ for high-performance inference, making it possible for developers to apply multiple effects in real-time applications.
 
 The SDK has the following AI features:
 
-- **AI Green Screen**, which segments and masks the background areas in a video or image.
-- **Background Blur**, which uses the segmentation mask from the AI Green Screen filter or other sources, and produces a blur effect over the background of a video or iamge.
-- **Encoder Artifact Reduction**, which reduces the blocky and noisy artifacts from an encoded video while preserving the details of the original video.
-- **Super Resolution**, which upscales a video while also reducing the blocky and noisy artifacts. It can enhance the details and sharpen the output while simultaneously preserving the content. This is suitable for upscaling lossy content.
-- **Upscale**, which is a very fast and light-weight method for upscaling an input video. It also provides a sharpening parameter to sharpen the resulting output. This feature can be optionally pipelined with the encoder artifact reduction feature to enhance the scale while reducing the video artifacts.
-- **Webcam Denoising**, which removes noise from a webcam video while preserving the texture details.
+- **Virtual Background**,which segments and masks the background areas in a video or image to enable AI-powered background removal, replacement, or blur.
+- **Artifact Reduction**, which reduces compression artifacts from an encoded video while preserving the details of the original video.
+- **Super Resolution**, which generates a detail-enhanced video with up to 4X high-quality scaling, while also reducing blocky/noisy artifacts and preserving textures and content. It is suitable for upscaling lossy content.
+- **Upscaler**, which is a very fast and light-weight method to deliver up to 4X high-quality scaled video with an adjustable sharpening parameter. This feature can be optionally pipelined with the Artifact Reduction feature to enhance the scale while reducing the video artifacts.
+- **Video Noise Removal**, which removes low-light camera noise from a webcam video while preserving the texture details.
 
 <p align="center">
 <img src="https://github.com/NVIDIA/MAXINE-VFX-SDK/blob/master/resources/SR.gif" alt="NVIDIA Super Resolution" width="640" height="320"/>
  </p>
 
 <p align="center">
-<img src="https://github.com/NVIDIA/MAXINE-VFX-SDK/blob/master/resources/Denoise.gif" alt="NVIDIA Webcam Denoising" width="640" height="320"/>
+<img src="https://github.com/NVIDIA/MAXINE-VFX-SDK/blob/master/resources/Denoise.gif" alt="NVIDIA Video Noise Removal" width="640" height="320"/>
  </p>
 
 The SDK provides several sample applications that demonstrate the features listed above in real time by using offline videos.
-- **AI Green Screen App**, which is a sample app that demonstrates the background segmentation feature.
-- **VideoEffects App**, which is a sample app that can invoke each of Encoder Artifact Reduction, Super Resolution or Upscale features individually.
-- **UpscalePipeline App**, which is a sample app that pipelines the Encoder Artifact Reduction feature with the Upscale feature.
-- **DenoiseEffect App**, which is a sample app that demonstrates the webcam denoising feature.
+- **AI Green Screen App**, which is a sample app that demonstrates the Virtual background feature.
+- **VideoEffects App**, which is a sample app that can invoke each of Artifact Reduction, Super Resolution or Upscaler features individually.
+- **UpscalePipeline App**, which is a sample app that pipelines the Artifact Reduction feature with the Upscaler feature.
+- **DenoiseEffect App**, which is a sample app that demonstrates the Video Noise Removal feature.
  
 The input and output resolutions supported by the features of the SDK are listed below.
-- The Encoder Artifact Reduction feature supports between 90p to 1080p as input resolutions. 
+- The Artifact Reduction feature supports between 90p to 1080p as input resolutions. 
 - The Super Resolution feature supports between 90p to 2160p as input resolutions.
    - Super Resolution supports the following scaling factors: 4/3x (~1.33x), 1.5x, 2x, 3x and 4x.
    - 2160p input is only supported for the following scaling factors: 4/3x (~1.33x), 1.5x and 2x
    - The maximum output resolution for the Super Resolution feature is 4320p.
-- The Upscale feature supports any input resolution, and the following scaling factors: 4/3x (~1.33x), 1.5x, 2x, 3x  and 4x.
-- The Webcam Denoising feature supports between 80p to 1080p as input resolutions.
-- The AI Green Screen and Background Blur features require that an input image/video be at least 288 pixels high.
+- The Upscaler feature supports any input resolution, and the following scaling factors: 4/3x (~1.33x), 1.5x, 2x, 3x  and 4x.
+- The Video Noise Removal feature supports between 80p to 1080p as input resolutions.
+- The Virtual Background and Background Blur features require that an input image/video be at least 288 pixels high.
 
 NVIDIA MAXINE VideoEffects SDK is distributed in the following parts:
 
@@ -44,12 +43,12 @@ NVIDIA MAXINE VideoEffects SDK is distributed in the following parts:
 Please refer to the [SDK System guide](https://docs.nvidia.com/deeplearning/maxine/vfx-sdk-system-guide/) for configuring and integrating the SDK, compiling and running the sample applications. Please visit the [NVIDIA MAXINE Video Effects SDK](https://developer.nvidia.com/maxine-getting-started) webpage for more information about the SDK.
 
 ## System requirements
-The SDK is supported on NVIDIA GPUs that are based on the NVIDIA® Turing™ or Ampere™ architecture and have Tensor Cores.
+The SDK is supported on NVIDIA GPUs that are based on the NVIDIA® Turing™, Ampere™ or Ada™ architecture and have Tensor Cores.
 
 * Windows OS supported: 64-bit Windows 10 or later
 * Microsoft Visual Studio: 2017 (MSVC15.0) or later
 * CMake: v3.12 or later
-* NVIDIA Graphics Driver for Windows: 465.89 or later
+* NVIDIA Graphics Driver for Windows: 511.65 or later
 
 ## NVIDIA MAXINE Branding Guidelines
 If you integrate an NVIDIA MAXINE SDK within your product, please follow the required branding guidelines that are available [here](https://www.nvidia.com/maxine-sdk-guidelines/)
