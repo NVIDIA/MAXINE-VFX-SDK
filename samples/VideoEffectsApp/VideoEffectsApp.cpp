@@ -459,7 +459,8 @@ FXApp::Err FXApp::createEffect(const char *effectSelector, const char *modelDir)
   NvCV_Status vfxErr;
   BAIL_IF_ERR(vfxErr = NvVFX_CreateEffect(effectSelector, &_eff));
   _effectName = effectSelector;
-  if (modelDir[0] != '\0'){
+  // Do not set NVVFX_MODEL_DIRECTORY for NVVFX_FX_SR_UPSCALE feature as it is not a valid selector for that feature
+  if (modelDir[0] != '\0' && strcmp(_effectName, NVVFX_FX_SR_UPSCALE)){
     BAIL_IF_ERR(vfxErr = NvVFX_SetString(_eff, NVVFX_MODEL_DIRECTORY, modelDir));
   }
 bail:

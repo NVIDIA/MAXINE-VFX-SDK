@@ -1,14 +1,3 @@
-Changelog (v0.7.1.0)
+Changelog (v0.7.2.0)
 --------------------
- - NvCVImage_Transfer() now sets alpha to 255 or 1.0f when doing RGB -> RGBA
- - NvCVImage_CompositeRect() has a premultiplied alpha mode added
- - AI Green Screen filter
-    - Introduced NVVFX_MAX_INPUT_WIDTH, NVVFX_MAX_INPUT_HEIGHT parameter selectors and getters to set the maximum input resolution
-        for NVVFX_FX_GREEN_SCREEN pipeline to avoid lazy memory allocations
-    - Introduced the following parameter selectors and APIs for NVVFX_FX_GREEN_SCREEN to improve the quality of the model
-    - NVVFX_MAX_NUMBER_STREAMS parameter selector to set the maximum number of streams
-    - NVVFX_STATE, NVVFX_STATE_COUNT parameter selectors
-    - NvVFX_AllocateState, NvVFX_DeallocateState, NvVFX_ResetState, NvVFX_SetStateObjectHandleArray APIs
-    - BatchEffectApp does not support NVVFX_FX_GREEN_SCREEN anymore. Use BatchAigsEffectApp as the sample app for batch input
- - Migrated to TensorRT 8.4.2.2
- - Migrated to CUDA 11.6u1
+  - AI Green Screen - Latency improvements

@@ -622,6 +622,18 @@ static void overlay(const cv::Mat &image, const cv::Mat &mask, float alpha, cv::
   result = image * (1.f - alpha) + maskClr * alpha;
 }
 
+static NvCV_Status WriteRGBA(const NvCVImage *bgr, const NvCVImage *a, const std::string& name) {
+  NvCV_Status err;
+  NvCVImage bgra(bgr->width, bgr->height, NVCV_BGRA, NVCV_U8);
+  NvCVImage aa(const_cast<NvCVImage*>(a), 0, 0, a->width, a->height);
+  aa.pixelFormat = NVCV_A;  // This could be Y but we make sure it is interpreted as alpha
+  err = NvCVImage_Transfer(bgr, &bgra, 0, 0, 0);   if (NVCV_SUCCESS != err) return err;
+  err = NvCVImage_Transfer(&aa, &bgra, 0, 0, 0);   if (NVCV_SUCCESS != err) return err;
+  cv::Mat ocv;
+  CVWrapperForNvCVImage(&bgra, &ocv);
+  return cv::imwrite(name, ocv) ? NVCV_SUCCESS : NVCV_ERR_WRITE;
+}
+
 FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
   NvCV_Status vfxErr;
   bool ok;
@@ -675,10 +687,10 @@ FXApp::Err FXApp::processImage(const char *inFile, const char *outFile) {
   if (!std::string(outFile).empty()) {
     if(IsLossyImageFile(outFile))
       fprintf(stderr, "WARNING: JPEG output file format will reduce image quality\n");
-    ok = cv::imwrite(outFile, result);
-    if (!ok) {
-      printf("Error writing: \"%s\"\n", outFile);
-      return errWrite;
+    vfxErr = WriteRGBA(&_srcVFX, &_dstVFX, outFile);
+    if (NVCV_SUCCESS != vfxErr) {
+      printf("%s: \"%s\"\n", NvCV_GetErrorStringFromCode(vfxErr), outFile);
+      goto bail;
     }
     ok = cv::imwrite(std::string(outFile) + "_segmentation_mask.png", _dstImg);  // save segmentation mask too
     if (!ok) {

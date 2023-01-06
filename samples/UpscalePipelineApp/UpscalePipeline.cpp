@@ -414,9 +414,6 @@ FXApp::Err FXApp::createEffects(const char *modelDir, NvVFX_EffectSelector first
   BAIL_IF_ERR(vfxErr = NvVFX_CreateEffect(first, &_arEff));
   BAIL_IF_ERR(vfxErr = NvVFX_SetString(_arEff, NVVFX_MODEL_DIRECTORY, modelDir));
   BAIL_IF_ERR(vfxErr = NvVFX_CreateEffect(second, &_upscaleEff));
-  if (modelDir[0] != '\0'){
-    BAIL_IF_ERR(vfxErr = NvVFX_SetString(_upscaleEff, NVVFX_MODEL_DIRECTORY, modelDir));
-  }
 bail:
   return appErrFromVfxStatus(vfxErr);
 }

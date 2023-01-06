@@ -83,6 +83,7 @@ typedef enum NvCV_Status {
   NVCV_ERR_OBJECTNOTFOUND        = -36,  //!< The specified object was not found.
   NVCV_ERR_SINGULAR              = -37,  //!< A mathematical singularity has been encountered.
   NVCV_ERR_NOTHINGRENDERED       = -38,  //!< Nothing was rendered in the specified region.
+  NVCV_ERR_CONVERGENCE           = -39,  //!< An iteration did not converge satisfactorily.
 
   NVCV_ERR_OPENGL                = -98,  //!< An OpenGL error has occurred.
   NVCV_ERR_DIRECT3D              = -99,  //!< A Direct3D error has occurred.
